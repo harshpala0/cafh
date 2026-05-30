@@ -1,0 +1,28 @@
+# render.yaml — place this in your GitHub repo root
+# Render.com will auto-detect and deploy
+
+services:
+  - type: web
+    name: ca-firmhub
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app --workers 4 --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Set manually in Render dashboard (paste Neon URL)
+      - key: SECRET_KEY
+        generateValue: true  # Render auto-generates a secure random value
+      - key: SUPERADMIN_KEY
+        sync: false          # Set manually — this is YOUR super-admin password
+      - key: TOKEN_HOURS
+        value: "12"
+      # Optional — Cloudflare R2 file storage (leave blank to skip)
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY
+        sync: false
+      - key: R2_SECRET_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: cafirmhub-files
+    healthCheckPath: /api/health
