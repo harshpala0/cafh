@@ -379,6 +379,10 @@ def _user_out(u):
 def index():
     return send_from_directory("static", "index.html")
 
+@app.route("/superadmin")
+def superadmin_page():
+    return send_from_directory("static", "superadmin.html")
+
 @app.route("/static/<path:fn>")
 def static_files(fn):
     return send_from_directory("static", fn)
