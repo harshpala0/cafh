@@ -378,9 +378,7 @@ def _user_out(u):
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
-@app.route("/superadmin")
-def superadmin_page():
-    return send_from_directory("static", "superadmin.html")
+
 @app.route("/static/<path:fn>")
 def static_files(fn):
     return send_from_directory("static", fn)
@@ -1423,6 +1421,351 @@ def report_overview():
 @app.route("/api/health")
 def health():
     return jsonify({"status":"ok","version":"saas-v1"})
+
+# ═══════════════════════════════════════════════════════════════
+#  TOOL: TAX AUDIT (SEC 44AB) ANALYZER
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/tools/tax-audit/analyze", methods=["POST"])
+@login_required
+def tax_audit_analyze():
+    try:
+        import pandas as pd
+    except ImportError:
+        return jsonify({"detail": "pandas not installed. Contact support."}), 500
+    try:
+        import openpyxl
+    except ImportError:
+        return jsonify({"detail": "openpyxl not installed. Contact support."}), 500
+
+    software    = request.form.get("software", "Tally")
+    nature      = request.form.get("nature", "Business")
+    presumptive = request.form.get("presumptive", "No")
+    try:
+        turnover = float(request.form.get("turnover", "0").replace(",", ""))
+    except Exception:
+        return jsonify({"detail": "Invalid turnover value"}), 400
+
+    cash_files = request.files.getlist("cash_files")
+    bank_files = request.files.getlist("bank_files")
+    od_files   = request.files.getlist("od_files")
+
+    if not cash_files and not bank_files and not od_files:
+        return jsonify({"detail": "Please upload at least one ledger file."}), 400
+
+    def clean_numeric(val):
+        if val is None: return 0.0
+        try:
+            if pd.isna(val): return 0.0
+        except Exception: pass
+        if isinstance(val, (int, float)): return float(val)
+        val = str(val).replace(",","").replace("₹","").replace("Rs.","").replace(" ","").strip()
+        try: return float(val)
+        except: return 0.0
+
+    def check_ignore(row_vals):
+        keywords = ["opening balance","closing balance","brought forward","carried forward",
+                    "balance b/d","balance c/d","balance b/f","balance c/f","total","grand total"]
+        for v in row_vals:
+            vs = str(v).lower().strip()
+            if any(k in vs for k in keywords): return True
+        return False
+
+    def read_file(f, source_type):
+        import io
+        fname = f.filename
+        try:
+            raw = f.read()
+            buf = io.BytesIO(raw)
+            if fname.lower().endswith(".csv"):
+                df_raw = pd.read_csv(buf, header=None)
+            else:
+                df_raw = pd.read_excel(buf, header=None)
+        except Exception as e:
+            return None, str(e)
+
+        try:
+            header_idx = -1
+            for i, row in df_raw.head(200).iterrows():
+                row_str = " ".join(str(x).lower() for x in row.values)
+                if any(k in row_str for k in ["date","dt","particulars","narration"]):
+                    header_idx = i; break
+
+            if header_idx != -1:
+                df = df_raw.iloc[header_idx:].reset_index(drop=True)
+                df.columns = df.iloc[0]
+                df = df[1:].reset_index(drop=True)
+                df.columns = [str(c).strip().lower() for c in df.columns]
+            else:
+                df = df_raw.copy()
+                df.columns = [f"col_{i}" for i in range(len(df.columns))]
+
+            col_map = {}
+            for c in df.columns:
+                if not col_map.get("Date") and any(x in c for x in ["date","dt","col_0"]):
+                    col_map["Date"] = c
+                elif not col_map.get("Particulars") and any(x in c for x in ["particulars","narration","desc","detail","col_2"]):
+                    col_map["Particulars"] = c
+                elif not col_map.get("VchType") and any(x in c for x in ["vch","type","voucher","col_3"]):
+                    col_map["VchType"] = c
+                elif not col_map.get("Debit") and any(x in c for x in ["debit","dr","receipt","deposit","col_5"]):
+                    col_map["Debit"] = c
+                elif not col_map.get("Credit") and any(x in c for x in ["credit","cr","payment","withdrawal","col_6"]):
+                    col_map["Credit"] = c
+
+            if "Date" not in col_map or "Particulars" not in col_map:
+                return None, f"Could not identify columns in {fname}"
+
+            df["_date"] = pd.to_datetime(df[col_map["Date"]], dayfirst=True, errors="coerce")
+            df["_ignore"] = df.apply(lambda r: check_ignore(r.values), axis=1)
+            merged = []
+            for i, row in df.iterrows():
+                if pd.isna(row["_date"]) and not row["_ignore"]: continue
+                narr = str(row.get(col_map["Particulars"], "")).strip()
+                vch  = str(row.get(col_map.get("VchType",""), "")).strip()
+                dr   = clean_numeric(row.get(col_map.get("Debit",""), 0))
+                cr   = clean_numeric(row.get(col_map.get("Credit",""), 0))
+                ign  = row["_ignore"]
+                if dr > 0 or cr > 0:
+                    merged.append({
+                        "Date": row["_date"], "Narration": narr,
+                        "Debit": dr, "Credit": cr,
+                        "Source": source_type, "File": fname,
+                        "VchType": vch, "Tag": "IGNORE_ROW" if ign else "NORMAL"
+                    })
+            return pd.DataFrame(merged), None
+        except Exception as e:
+            return None, str(e)
+
+    all_dfs = []; failed = []
+    for flist, stype in [(cash_files,"CASH"),(bank_files,"BANK"),(od_files,"BANK_OD")]:
+        for f in flist:
+            if not f or not f.filename: continue
+            df, err = read_file(f, stype)
+            if df is not None and not df.empty:
+                all_dfs.append(df)
+            else:
+                failed.append(f.filename + (f" ({err})" if err else ""))
+
+    if not all_dfs:
+        return jsonify({"detail": f"No valid data found. Failed: {', '.join(failed)}"}), 400
+
+    df = pd.concat(all_dfs, ignore_index=True).sort_values("Date").reset_index(drop=True)
+    df = df[df["Tag"] != "IGNORE_ROW"].copy().reset_index(drop=True)
+
+    # Tag contra / cheque return entries
+    return_kw = ["return","bounce","dishonour","reject","reversal","unpaid"]
+    for i, row in df.iterrows():
+        if df.at[i,"Tag"] != "NORMAL": continue
+        vl = str(row.get("VchType","")).lower()
+        nl = str(row["Narration"]).lower()
+        if "contra" in vl or "ctra" in vl:
+            df.at[i,"Tag"] = "CONTRA"
+        elif any(k in nl for k in return_kw) and row["Source"] in ["BANK","BANK_OD"]:
+            df.at[i,"Tag"] = "CHEQUE_RETURN"
+
+    bank = df[df["Source"].isin(["BANK","BANK_OD"])]
+    cash = df[df["Source"]=="CASH"]
+
+    gross_bank_rx   = float(bank[bank["Debit"]>0]["Debit"].sum())
+    bank_contra_rx  = float(bank[(bank["Tag"]=="CONTRA")&(bank["Debit"]>0)]["Debit"].sum())
+    bank_inter_rx   = 0.0
+    bank_return_rx  = float(bank[(bank["Tag"]=="CHEQUE_RETURN")&(bank["Debit"]>0)]["Debit"].sum())
+    net_bank_rx     = gross_bank_rx - bank_contra_rx - bank_inter_rx - bank_return_rx
+
+    gross_bank_pmt  = float(bank[bank["Credit"]>0]["Credit"].sum())
+    bank_contra_pmt = float(bank[(bank["Tag"]=="CONTRA")&(bank["Credit"]>0)]["Credit"].sum())
+    bank_inter_pmt  = 0.0
+    bank_return_pmt = float(bank[(bank["Tag"]=="CHEQUE_RETURN")&(bank["Credit"]>0)]["Credit"].sum())
+    net_bank_pmt    = gross_bank_pmt - bank_contra_pmt - bank_inter_pmt - bank_return_pmt
+
+    gross_cash_rx   = float(cash[cash["Debit"]>0]["Debit"].sum())
+    cash_contra_rx  = float(cash[(cash["Tag"]=="CONTRA")&(cash["Debit"]>0)]["Debit"].sum())
+    net_cash_rx     = gross_cash_rx - cash_contra_rx
+
+    gross_cash_pmt  = float(cash[cash["Credit"]>0]["Credit"].sum())
+    cash_contra_pmt = float(cash[(cash["Tag"]=="CONTRA")&(cash["Credit"]>0)]["Credit"].sum())
+    net_cash_pmt    = gross_cash_pmt - cash_contra_pmt
+
+    total_rx  = net_bank_rx + net_cash_rx
+    total_pmt = net_bank_pmt + net_cash_pmt
+    cash_rx_pct  = round((net_cash_rx / total_rx * 100)  if total_rx  > 0 else 0.0, 2)
+    cash_pmt_pct = round((net_cash_pmt / total_pmt * 100) if total_pmt > 0 else 0.0, 2)
+
+    # Audit decision
+    audit_status = "Not Applicable"; section = "N/A"; reason = "Below threshold limits"
+    if nature == "Profession":
+        if turnover > 5000000:
+            audit_status = "Applicable"; section = "Sec 44AB(b)"
+            reason = "Gross receipts from profession > ₹50 Lakhs"
+    else:
+        if presumptive == "Yes (Opted Out)":
+            audit_status = "Applicable"; section = "Sec 44AB(e)"
+            reason = "Opted out of presumptive taxation (Sec 44AD(4))"
+        elif turnover > 100000000:
+            audit_status = "Applicable"; section = "Sec 44AB(a)"
+            reason = "Total Turnover > ₹10 Crores"
+        elif turnover > 10000000:
+            if cash_rx_pct <= 5.0 and cash_pmt_pct <= 5.0:
+                audit_status = "Not Applicable"; section = "Proviso to Sec 44AB(a)"
+                reason = "Turnover > ₹1 Cr but Cash transactions ≤ 5%"
+            else:
+                audit_status = "Applicable"; section = "Sec 44AB(a)"
+                reason = f"Turnover > ₹1 Cr AND Cash Rx ({cash_rx_pct}%) or Pmt ({cash_pmt_pct}%) > 5%"
+
+    # Ledger-wise working
+    ledger_working = []
+    for (src, fn), fdf in df.groupby(["Source","File"]):
+        ledger_working.append({
+            "book_type": src, "file": fn,
+            "gross_rx":       float(fdf[fdf["Debit"]>0]["Debit"].sum()),
+            "less_contra_rx": float(fdf[(fdf["Tag"]=="CONTRA")&(fdf["Debit"]>0)]["Debit"].sum()),
+            "less_inter_rx":  0.0,
+            "less_return_rx": float(fdf[(fdf["Tag"]=="CHEQUE_RETURN")&(fdf["Debit"]>0)]["Debit"].sum()),
+            "net_rx":         float(fdf[(fdf["Tag"]=="NORMAL")&(fdf["Debit"]>0)]["Debit"].sum()),
+            "gross_pmt":      float(fdf[fdf["Credit"]>0]["Credit"].sum()),
+            "net_pmt":        float(fdf[(fdf["Tag"]=="NORMAL")&(fdf["Credit"]>0)]["Credit"].sum()),
+        })
+
+    # Flags: 40A(3) and 269ST
+    flags = []
+    normal_cash = df[(df["Tag"]=="NORMAL")&(df["Source"]=="CASH")]
+    for _, r in normal_cash.iterrows():
+        if r["Credit"] > 10000:
+            flags.append({"date": str(r["Date"])[:10], "narration": r["Narration"],
+                          "amount": float(r["Credit"]), "warning": "Sec 40A(3) — Cash Payment > ₹10,000"})
+        if r["Debit"] >= 200000:
+            flags.append({"date": str(r["Date"])[:10], "narration": r["Narration"],
+                          "amount": float(r["Debit"]), "warning": "Sec 269ST — Cash Receipt ≥ ₹2,00,000"})
+
+    return jsonify({
+        "summary": {
+            "gross_bank_rx": gross_bank_rx, "bank_contra_rx": bank_contra_rx,
+            "bank_inter_rx": bank_inter_rx, "bank_return_rx": bank_return_rx,
+            "net_bank_rx": net_bank_rx,
+            "gross_bank_pmt": gross_bank_pmt, "bank_contra_pmt": bank_contra_pmt,
+            "bank_inter_pmt": bank_inter_pmt, "bank_return_pmt": bank_return_pmt,
+            "net_bank_pmt": net_bank_pmt,
+            "gross_cash_rx": gross_cash_rx, "cash_contra_rx": cash_contra_rx,
+            "net_cash_rx": net_cash_rx,
+            "gross_cash_pmt": gross_cash_pmt, "cash_contra_pmt": cash_contra_pmt,
+            "net_cash_pmt": net_cash_pmt,
+            "total_net_rx": total_rx, "total_net_pmt": total_pmt,
+            "cash_rx_pct": cash_rx_pct, "cash_pmt_pct": cash_pmt_pct,
+            "audit_status": audit_status, "section": section, "reason": reason,
+            "failed_files": failed
+        },
+        "ledger_working": ledger_working,
+        "flags": flags,
+        "matched_pairs": []
+    })
+
+
+@app.route("/api/tools/tax-audit/export-excel", methods=["POST"])
+@login_required
+def tax_audit_export_excel():
+    import io, os, tempfile
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return jsonify({"detail": "openpyxl not installed"}), 500
+
+    data   = request.get_json(silent=True) or {}
+    s      = data.get("summary", {})
+    lw     = data.get("ledger_working", [])
+    client = data.get("client", {})
+
+    def inr(v):
+        try: return f"₹{float(v):,.2f}"
+        except: return "₹0.00"
+
+    wb  = openpyxl.Workbook()
+    ws  = wb.active
+    ws.title = "44AB Working"
+    navy_fill = PatternFill("solid", fgColor="003366")
+    hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+    reg_font  = Font(name="Arial", size=10)
+    thin      = Side(style="thin", color="D1DAEA")
+    bdr       = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def cell(row, col, val, bg="FFFFFF", bold=False, align="left"):
+        c = ws.cell(row=row, column=col, value=val)
+        c.font   = Font(name="Arial", bold=bold, size=10)
+        c.fill   = PatternFill("solid", fgColor=bg)
+        c.alignment = Alignment(horizontal=align, vertical="center")
+        c.border = bdr
+        return c
+
+    ws.merge_cells("A1:B1")
+    t = ws.cell(row=1, column=1, value="Tax Audit (Sec 44AB) Working Report")
+    t.font = Font(name="Arial", bold=True, size=14, color="003366")
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+
+    info = [("Assessee", client.get("name","")), ("PAN", client.get("pan","")),
+            ("A.Y.", client.get("ay","")), ("Nature", client.get("nature","")),
+            ("Turnover", inr(client.get("turnover",0)))]
+    for i, (k, v) in enumerate(info, 2):
+        cell(i, 1, k, bg="F0F4F8", bold=True)
+        cell(i, 2, v)
+
+    r = 8
+    ws.merge_cells(f"A{r}:B{r}")
+    h = ws.cell(row=r, column=1, value="44AB Working Analysis")
+    h.font = hdr_font; h.fill = navy_fill
+    h.alignment = Alignment(horizontal="center", vertical="center")
+    r += 1
+
+    rows_data = [
+        ("Bank Gross Receipts", s.get("gross_bank_rx",0)),
+        ("  Less: Contra (Receipts)", s.get("bank_contra_rx",0)),
+        ("  Less: Cheque Returns", s.get("bank_return_rx",0)),
+        ("Net Bank Receipts (A)", s.get("net_bank_rx",0), True),
+        ("Bank Gross Payments", s.get("gross_bank_pmt",0)),
+        ("  Less: Contra (Payments)", s.get("bank_contra_pmt",0)),
+        ("Net Bank Payments (B)", s.get("net_bank_pmt",0), True),
+        ("Gross Cash Receipts", s.get("gross_cash_rx",0)),
+        ("  Less: Contra", s.get("cash_contra_rx",0)),
+        ("Net Cash Receipts (C)", s.get("net_cash_rx",0), True),
+        ("Gross Cash Payments", s.get("gross_cash_pmt",0)),
+        ("Net Cash Payments (D)", s.get("net_cash_pmt",0), True),
+        ("Total Net Receipts (A+C)", s.get("total_net_rx",0), True),
+        ("Total Net Payments (B+D)", s.get("total_net_pmt",0), True),
+        (f"Cash Receipt %", f"{s.get('cash_rx_pct',0):.2f}%", True),
+        (f"Cash Payment %", f"{s.get('cash_pmt_pct',0):.2f}%", True),
+    ]
+    for rd in rows_data:
+        bold = len(rd) > 2 and rd[2]
+        bg = "EBF4FF" if bold else "FFFFFF"
+        cell(r, 1, rd[0], bg=bg, bold=bold)
+        cell(r, 2, inr(rd[1]) if isinstance(rd[1], (int, float)) else rd[1],
+             bg=bg, bold=bold, align="right")
+        r += 1
+
+    r += 1
+    status = s.get("audit_status","")
+    status_bg = "FFF0F0" if status == "Applicable" else "E8F5EE"
+    ws.merge_cells(f"A{r}:B{r}")
+    sc = ws.cell(row=r, column=1,
+                 value=f"AUDIT STATUS: {status} — {s.get('section','')} — {s.get('reason','')}")
+    sc.font = Font(name="Arial", bold=True, size=11,
+                   color="C53030" if status == "Applicable" else "1E7E44")
+    sc.fill = PatternFill("solid", fgColor=status_bg.replace("#",""))
+    sc.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[r].height = 30
+
+    ws.column_dimensions["A"].width = 50
+    ws.column_dimensions["B"].width = 22
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False,
+          dir=os.path.join(os.path.dirname(__file__), "static"))
+    tmp.close()
+    wb.save(tmp.name)
+    return send_file(tmp.name, as_attachment=True,
+                     download_name="Tax_Audit_44AB_Report.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 # ═══════════════════════════════════════════════════════════════
 #  FILE UPLOADS (Cloudflare R2 or local fallback)
