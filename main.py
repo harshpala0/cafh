@@ -383,6 +383,11 @@ def index():
 def superadmin_page():
     return send_from_directory("static", "superadmin.html")
 
+@app.route("/tools/workpapers")
+@login_required
+def workpapers_page():
+    return send_from_directory("static", "audit_working_papers.html")
+
 @app.route("/static/<path:fn>")
 def static_files(fn):
     return send_from_directory("static", fn)
