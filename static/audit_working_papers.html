@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICAI Audit Working Paper Booklet</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --ink: #1a1a1a;
+  --ink-light: #555;
+  --ink-faint: #999;
+  --paper: #faf8f4;
+  --paper-dark: #f0ede7;
+  --rule: #d4cfc6;
+  --accent: #1b3a6b;
+  --accent-light: #2d5aa0;
+  --accent-muted: #e8edf5;
+  --green: #1a5c3a;
+  --green-muted: #e4f0ea;
+  --amber: #7a4a00;
+  --amber-muted: #fdf3e3;
+  --danger: #8b1a1a;
+  --danger-muted: #fde8e8;
+  --sidebar-w: 280px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Instrument Sans', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+/* ---- LAYOUT ---- */
+#app { display: flex; min-height: 100vh; }
+
+/* SIDEBAR */
+#sidebar {
+  width: var(--sidebar-w);
+  background: var(--accent);
+  color: #fff;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+#sidebar-header {
+  padding: 24px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
+#sidebar-header h1 {
+  font-family: 'EB Garamond', serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+#sidebar-header p {
+  font-size: 11px;
+  opacity: 0.65;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+#sidebar nav { flex: 1; padding: 12px 0; }
+
+.nav-chapter {
+  padding: 6px 20px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-top: 10px;
+}
+.nav-item {
+  display: block;
+  padding: 7px 20px 7px 28px;
+  font-size: 12.5px;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+  line-height: 1.3;
+}
+.nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.nav-item.active {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border-left-color: #7eb8f7;
+  font-weight: 600;
+}
+.nav-section-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  opacity: 0.55;
+  display: block;
+}
+
+/* SIDEBAR FOOTER */
+#sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
+#btn-print {
+  width: 100%;
+  background: #fff;
+  color: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+#btn-print:hover { background: #e8edf5; }
+#btn-print svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* MAIN */
+#main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOPBAR */
+#topbar {
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+#breadcrumb {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+#breadcrumb span { color: var(--accent); }
+
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+.btn-sm {
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  transition: all 0.15s;
+  font-family: 'Instrument Sans', sans-serif;
+}
+.btn-sm:hover { background: var(--paper-dark); }
+.btn-sm.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-sm.primary:hover { background: var(--accent-light); }
+
+/* CONTENT */
+#content { padding: 36px 40px 60px; max-width: 900px; }
+
+/* SECTION HEADER */
+.section-header { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 2px solid var(--rule); }
+.section-header .chapter-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.section-header h2 {
+  font-family: 'EB Garamond', serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.section-header p.note {
+  font-size: 12.5px;
+  color: var(--ink-light);
+  font-style: italic;
+  line-height: 1.5;
+  background: var(--amber-muted);
+  border-left: 3px solid #c49a3a;
+  padding: 8px 12px;
+  border-radius: 0 4px 4px 0;
+}
+
+/* STAFF SIGN-OFF GRID */
+.signoff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  background: var(--accent-muted);
+  border: 1px solid #c8d8ee;
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+}
+.signoff-item label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-light);
+  margin-bottom: 4px;
+}
+.signoff-item { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.signoff-item .lbl { grid-column: 1 / -1; }
+.signoff-item input {
+  background: #fff;
+  border: 1px solid #c8d8ee;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: 'Instrument Sans', sans-serif;
+  color: var(--ink);
+}
+
+/* FORM ELEMENTS */
+.form-group { margin-bottom: 18px; }
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 5px;
+}
+.form-group input[type="text"],
+.form-group input[type="date"],
+.form-group input[type="number"],
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 8px 12px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 13.5px;
+  color: var(--ink);
+  transition: border 0.15s, box-shadow 0.15s;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-light);
+  box-shadow: 0 0 0 3px rgba(45,90,160,0.1);
+}
+.form-group textarea { resize: vertical; min-height: 90px; line-height: 1.55; }
+
+/* FIELDSET CARD */
+.card {
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.card h3 {
+  font-family: 'EB Garamond', serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--paper-dark);
+}
+
+/* TABLE EDITOR */
+.table-editor {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 12.5px;
+}
+.table-editor thead th {
+  background: var(--accent-muted);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  border: 1px solid #c8d8ee;
+  text-align: left;
+}
+.table-editor tbody td {
+  border: 1px solid var(--rule);
+  padding: 4px 6px;
+  vertical-align: top;
+}
+.table-editor tbody tr:nth-child(even) td { background: var(--paper); }
+.table-editor input,
+.table-editor select,
+.table-editor textarea {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 12px;
+  padding: 3px 4px;
+  color: var(--ink);
+  resize: vertical;
+  min-height: 32px;
+}
+.table-editor input:focus,
+.table-editor select:focus,
+.table-editor textarea:focus {
+  outline: 2px solid var(--accent-light);
+  border-radius: 3px;
+  background: var(--accent-muted);
+}
+.table-editor .row-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: center;
+  width: 28px;
+}
+.add-row-btn {
+  margin-top: 8px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px dashed var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-radius: 4px;
+  font-family: 'Instrument Sans', sans-serif;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.add-row-btn:hover { background: #d0dff0; }
+
+/* INLINE COLS */
+.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+/* RISK BADGE */
+.risk-select {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  font-family: 'Instrument Sans', sans-serif;
+}
+.risk-high { background: var(--danger-muted); color: var(--danger); }
+.risk-medium { background: var(--amber-muted); color: var(--amber); }
+.risk-low { background: var(--green-muted); color: var(--green); }
+
+/* YES/NO TOGGLE */
+.yn-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  overflow: hidden;
+  width: fit-content;
+}
+.yn-toggle input[type="radio"] { display: none; }
+.yn-toggle label {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+  color: var(--ink-light);
+  border-right: 1px solid var(--rule);
+  transition: all 0.15s;
+  margin: 0;
+}
+.yn-toggle label:last-child { border-right: none; }
+.yn-toggle input[value="yes"]:checked + label { background: var(--green-muted); color: var(--green); }
+.yn-toggle input[value="no"]:checked + label { background: var(--danger-muted); color: var(--danger); }
+.yn-toggle input[value="na"]:checked + label { background: var(--amber-muted); color: var(--amber); }
+
+/* TOAST NOTIFICATION */
+#toast {
+  visibility: hidden;
+  min-width: 250px;
+  background-color: var(--accent);
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 14px 20px;
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  opacity: 0;
+  transition: opacity 0.3s, bottom 0.3s;
+}
+#toast.show {
+  visibility: visible;
+  opacity: 1;
+  bottom: 50px;
+}
+
+/* NAV ARROWS */
+.section-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+.section-nav button {
+  padding: 9px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Instrument Sans', sans-serif;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  transition: all 0.15s;
+}
+.section-nav button:hover { background: var(--paper-dark); }
+.section-nav button.next { background: var(--accent); color: #fff; border-color: var(--accent); }
+.section-nav button.next:hover { background: var(--accent-light); }
+
+/* LANDING SCREEN */
+#landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 40px;
+  text-align: center;
+}
+#landing .icai-logo-box {
+  width: 80px; height: 80px;
+  background: var(--accent);
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
+}
+#landing .icai-logo-box span {
+  color: #fff;
+  font-family: 'EB Garamond', serif;
+  font-size: 28px;
+  font-weight: 700;
+}
+#landing h1 {
+  font-family: 'EB Garamond', serif;
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--ink);
+}
+#landing p {
+  font-size: 15px;
+  color: var(--ink-light);
+  max-width: 540px;
+  line-height: 1.6;
+  margin-bottom: 36px;
+}
+.chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  max-width: 800px;
+  width: 100%;
+}
+.chapter-card {
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 18px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+.chapter-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(27,58,107,0.1);
+}
+.chapter-card .num {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 500;
+  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+}
+.chapter-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+.chapter-card .count {
+  margin-top: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--accent-light);
+}
+
+/* ---- PRINT CONTAINER STYLES ---- */
+#print-container { display: none; }
+
+@media print {
+  body { 
+    background: #fff !important; 
+    font-size: 10pt; 
+    color: #000; 
+    font-family: 'Times New Roman', Times, serif; 
+  }
+  #app { display: none !important; }
+  #print-container { 
+    display: block !important; 
+    width: 100%; 
+  }
+  
+  .print-page { 
+    page-break-after: always; 
+    padding: 20px;
+  }
+  .print-page:last-child { page-break-after: avoid; }
+  
+  /* Print Cover */
+  .print-cover {
+    text-align: center;
+    padding-top: 200px;
+  }
+  .print-cover h1 { font-size: 28pt; margin-bottom: 10px; font-family: 'EB Garamond', serif; }
+  .print-cover h2 { font-size: 18pt; margin-bottom: 10px; font-weight: normal; }
+  .print-cover h3 { font-size: 14pt; margin-bottom: 60px; font-weight: normal; color: #444; }
+  .print-signoff {
+    margin: 0 auto;
+    width: 300px;
+    text-align: left;
+    border: 1px solid #000;
+    padding: 20px;
+  }
+  .print-signoff p { margin: 8px 0; font-size: 12pt; }
+  
+  /* Print Section Headers */
+  .print-header {
+    border-bottom: 2px solid #000;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+  }
+  .print-header-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+    color: #555;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    font-family: 'Helvetica', sans-serif;
+  }
+  .print-header h2 { font-size: 16pt; margin: 0; font-family: 'EB Garamond', serif;}
+  
+  /* Print Fields */
+  .print-field { margin-bottom: 12px; }
+  .print-label { font-weight: bold; display: block; margin-bottom: 4px; font-size: 10pt;}
+  .print-value { margin-left: 10px; white-space: pre-wrap; font-size: 10pt; min-height: 14px;}
+  
+  /* Print Tables */
+  table.print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    page-break-inside: auto;
+  }
+  table.print-table tr { page-break-inside: avoid; page-break-after: auto; }
+  table.print-table th, table.print-table td {
+    border: 1px solid #000;
+    padding: 6px;
+    font-size: 9pt;
+    vertical-align: top;
+  }
+  table.print-table th { background-color: #f0f0f0; font-weight: bold; text-align: left;}
+  
+  @page {
+    margin: 20mm;
+    @bottom-right { content: counter(page); font-size: 9pt; }
+  }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div id="sidebar-header">
+    <h1>Audit Working Papers</h1>
+    <p>ICAI AASB Templates · FY Tool</p>
+  </div>
+  <nav id="nav-tree">
+    <!-- populated by JS -->
+  </nav>
+  <div id="sidebar-footer">
+    <button id="btn-print" onclick="printBooklet()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Print Full Working File
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <div id="breadcrumb">ICAI &rsaquo; <span id="bc-chapter">Home</span></div>
+    <div class="topbar-actions">
+      <button class="btn-sm" onclick="showLanding()">&#8962; Home</button>
+      <button class="btn-sm primary" onclick="saveProgress()">&#8595; Save Data</button>
+      <button class="btn-sm" onclick="loadProgress()">&#8593; Load Data</button>
+      <input type="file" id="file-load" accept=".json" style="display:none" onchange="handleLoad(event)">
+    </div>
+  </div>
+  <div id="content">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+</div>
+
+<!-- PRINT CONTAINER (Hidden on screen, Visible on print) -->
+<div id="print-container"></div>
+
+<!-- CUSTOM TOAST -->
+<div id="toast">Message</div>
+
+<script>
+// ============================================================
+// DATA MODEL (Comprehensive mapping from ICAI Word File)
+// ============================================================
+const SECTIONS = [
+  // ---- CHAPTER 1: APPOINTMENT ----
+  { id: '1.1', chapter: 'Chapter 1: Appointment', title: 'A Note on Appointment', desc: 'Engagement letter and appointment details per SA 210', fields: [
+    { type: 'header' },
+    { id: 'client_name', label: 'Client Name', type: 'text', placeholder: 'XYZ Company Private Limited' },
+    { id: 'audit_year', label: 'Financial Year', type: 'text', placeholder: 'Year ended March 31, 20xx' },
+    { id: 'appointment_date', label: 'Date of Appointment', type: 'date' },
+    { id: 'auditor_firm', label: 'Name of Audit Firm', type: 'text', placeholder: 'ABC & Associates LLP' },
+  ]},
+  { id: '1.2 & 1.3', chapter: 'Chapter 1: Appointment', title: 'ADT-1 & Challan Details', fields: [
+    { type: 'header' },
+    { id: 'adt1_filed', label: 'ADT-1 Filed with MCA?', type: 'yn', name: 'adt1_filed' },
+    { id: 'adt1_date', label: 'ADT-1 Filing Date', type: 'date' },
+    { id: 'adt1_challan', label: 'Challan Reference / SRN', type: 'text' },
+  ]},
+  { id: '1.4', chapter: 'Chapter 1: Appointment', title: 'Engagement Acceptance / Continuation', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Risk Assessment Criteria', id: 'acceptance_checklist',
+      cols: ['#', 'Risk Assessment Criteria', 'Response', 'Risk Level'],
+      colTypes: ['row-num', 'textarea', 'textarea', 'risk'],
+      colWidths: ['5%', '45%', '35%', '15%'],
+      rows: [
+        ['', 'The reputation of the company and its management', '', 'medium'],
+        ['', 'The effectiveness of its Board (Capabilities & track record)', '', 'medium'],
+        ['', 'Background and experience of client\'s reporting personnel', '', 'medium'],
+        ['', 'Incentives or inclinations for management to manipulate results', '', 'medium'],
+        ['', 'Significant transactions structured to achieve revenue recognition', '', 'medium'],
+        ['', 'Unusually aggressive or creative accounting', '', 'medium'],
+        ['', 'Are we independent and can we conduct the audit per ethical reqs?', '', 'low'],
+      ]
+    },
+    { id: 'acceptance_decision', label: 'Decision', type: 'select', options: ['Accepted', 'Rejected'] },
+    { id: 'acceptance_remarks', label: 'Remarks', type: 'textarea' },
+  ]},
+  { id: '1.5', chapter: 'Chapter 1: Appointment', title: 'Engagement Letter', fields: [
+    { type: 'header' },
+    { id: 'eng_letter_issued', label: 'Engagement Letter Issued?', type: 'yn', name: 'eng_letter_issued' },
+    { id: 'eng_letter_signed', label: 'Countersigned by Management?', type: 'yn', name: 'eng_letter_signed' },
+    { id: 'eng_letter_modifications', label: 'Modifications to Standard Format (if any)', type: 'textarea' },
+  ]},
+  { id: '1.6 & 1.7', chapter: 'Chapter 1: Appointment', title: 'Independence & Confidentiality', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Team Sign-offs', id: 'independence_table',
+      cols: ['Name', 'Designation', 'Date', 'Independent?', 'Confidentiality Signed?'],
+      colTypes: ['text', 'text', 'date', 'yn-inline', 'yn-inline'],
+      colWidths: ['25%','20%','15%','20%','20%'],
+      rows: [['','','','yes','yes'],['','','','yes','yes'],['','','','yes','yes']]
+    },
+  ]},
+
+  // ---- CHAPTER 2: PLANNING ----
+  { id: '2.1', chapter: 'Chapter 2: Planning', title: 'Planning Scope of Engagement', fields: [
+    { type: 'header' },
+    { id: 'entity_type', label: 'Type of Entity', type: 'select', options: ['Listed', 'Unlisted', 'LLP', 'Other'] },
+    { id: 'financial_framework', label: 'Applicable Financial Reporting Framework', type: 'select', options: ['Indian GAAP (AS)', 'Ind AS', 'Other'] },
+    { id: 'key_focus_areas', label: 'Key Focus Areas', type: 'textarea' },
+  ]},
+  { id: '2.5', chapter: 'Chapter 2: Planning', title: 'Audit Strategy', fields: [
+    { type: 'header' },
+    { id: 'is_initial_audit', label: 'Initial Audit Engagement?', type: 'yn', name: 'is_initial_audit' },
+    { type: 'table', label: 'Timing of Audit Activities', id: 'timing_table',
+      cols: ['Activity', 'From Date', 'To Date', 'Responsible'],
+      colTypes: ['text','date','date','text'],
+      colWidths: ['40%','20%','20%','20%'],
+      rows: [
+        ['Audit Planning','','',''],
+        ['Audit Field Work','','',''],
+        ['Finalization of Audit Report & Financials','','',''],
+      ]
+    },
+    { id: 'strategy_other', label: 'Other Strategy Considerations', type: 'textarea' },
+  ]},
+  { id: '2.7', chapter: 'Chapter 2: Planning', title: 'Kick Off Meeting & Client KYC', fields: [
+    { type: 'header' },
+    { id: 'kyc_business', label: 'Nature of Business / Operations', type: 'textarea' },
+    { id: 'kyc_audit_trail', label: 'Audit Trail Feature in Accounting Software (MCA Rule 3(1))', type: 'yn', name: 'kyc_audit_trail' },
+    { id: 'kickoff_date', label: 'Kick Off Meeting Date', type: 'date' },
+    { id: 'kickoff_minutes', label: 'Key Discussions / Minutes', type: 'textarea' },
+  ]},
+  { id: '2.8', chapter: 'Chapter 2: Planning', title: 'Materiality', desc: 'Per SA 320', fields: [
+    { type: 'header' },
+    { id: 'materiality_benchmark', label: 'Benchmark Selected', type: 'select', options: ['Revenue (Net)', 'Profit Before Tax', 'Total Assets', 'EBITDA'] },
+    { type: 'table', label: 'Materiality Computation (Amount in INR)', id: 'materiality_table',
+      cols: ['Particulars', 'Amount', '% Considered', 'Overall Materiality', 'Performance Materiality'],
+      colTypes: ['text','number','number','number','number'],
+      colWidths: ['28%','18%','18%','18%','18%'],
+      rows: [['Primary Benchmark','','','','']]
+    },
+    { id: 'materiality_conclusion', label: 'Conclusion on Basis of Materiality', type: 'textarea' },
+  ]},
+  { id: '2.10', chapter: 'Chapter 2: Planning', title: 'Significant Risks & Fraud Risk', desc: 'Per SA 315 & SA 240', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Risks & Procedures', id: 'risk_table',
+      cols: ['Particulars', 'Assertions', 'Potential Risk / Fraud Risk', 'Planned Procedures'],
+      colTypes: ['text','textarea','textarea','textarea'],
+      colWidths: ['15%','20%','25%','40%'],
+      rows: [
+        ['Revenue','Completeness, Cut-off, Accuracy','Risk of overstatement of revenue',''],
+        ['Inventory','Existence, Valuation','Physical inventory does not match',''],
+        ['Mgt Override','','Improper journal entries',''],
+      ]
+    },
+  ]},
+  { id: '2.12', chapter: 'Chapter 2: Planning', title: 'Testing Strategy', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Testing Plan', id: 'testing_strategy_tbl',
+      cols: ['Account Balance', 'Control Testing?', 'Substantive Analytical?', 'Test of Details?', 'Assertions Tested'],
+      colTypes: ['text','yn-inline','yn-inline','yn-inline','text'],
+      colWidths: ['25%','15%','15%','15%','30%'],
+      rows: [
+        ['Property Plant and Equipment','yes','no','yes','E, R, V&A, D'],
+        ['Inventory','yes','yes','yes','E, C, V&A'],
+        ['Trade Receivables','yes','yes','yes','E, V&A, R'],
+        ['Revenue from Operations','yes','yes','yes','O, C, CO, A'],
+      ]
+    },
+  ]},
+  { id: '2.14', chapter: 'Chapter 2: Planning', title: 'Variance Analysis', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'BS & PL Variance Analysis', id: 'variance_tbl',
+      cols: ['Financial Statement Line Item', 'Current Year (₹)', 'Previous Year (₹)', '% Variance', 'Reasons for Variances'],
+      colTypes: ['text','number','number','text','textarea'],
+      colWidths: ['25%','15%','15%','10%','35%'],
+      rows: [
+        ['Revenue from Operations','','','',''],
+        ['Cost of Materials Consumed','','','',''],
+        ['Property, Plant & Equipment','','','',''],
+        ['Trade Receivables','','','',''],
+      ]
+    },
+  ]},
+  { id: '2.19', chapter: 'Chapter 2: Planning', title: 'Initial Audit Checklist', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Information Required from Client', id: 'initial_check_tbl',
+      cols: ['Area', 'Particulars', 'Expected Date', 'Status'],
+      colTypes: ['text','textarea','date','select-status'],
+      colWidths: ['15%','55%','15%','15%'],
+      rows: [
+        ['Business', 'Latest org structure, Approved policies, Business projections', '', ''],
+        ['Financials', 'Detailed trial balance, Draft standalone/consolidated FS', '', ''],
+        ['Statutory', 'Minutes of Board Meetings, Statutory Registers', '', ''],
+        ['Taxation', 'ITR, GST returns, Assessment orders, Form 26AS', '', ''],
+      ]
+    },
+  ]},
+
+  // ---- CHAPTER 3: EXECUTION ----
+  { id: '3.1-3.5', chapter: 'Chapter 3: Execution', title: 'PPE, CWIP, Intangibles, ROU Assets, Depreciation', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Fixed Assets – Audit Procedures', id: 'ppe_table',
+      cols: ['Area', 'Procedure Performed', 'Findings / Observations', 'Status'],
+      colTypes: ['text','textarea','textarea','select-status'],
+      colWidths: ['18%','32%','34%','16%'],
+      rows: [
+        ['PPE Register','Obtain PPE register; reconcile to financials and GL','',''],
+        ['Physical Verification','Verify physical verification report against PPE register','',''],
+        ['Additions & Disposals','Test additions/disposals on sample basis; verify authorisation','',''],
+        ['Depreciation','Reperform depreciation computation; check rates','',''],
+        ['CWIP & Intangibles','Verify CWIP movement; verify intangibles amortisation','',''],
+      ]
+    },
+    { id: 'ppe_remarks', label: 'Audit Remarks / Conclusions', type: 'textarea' },
+  ]},
+  { id: '3.6-3.8', chapter: 'Chapter 3: Execution', title: 'Investments, Trade Receivables, Cash & Bank', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Assets – Audit Procedures', id: 'assets_table',
+      cols: ['Area', 'Procedure Performed', 'Findings / Observations', 'Status'],
+      colTypes: ['text','textarea','textarea','select-status'],
+      colWidths: ['18%','32%','34%','16%'],
+      rows: [
+        ['Investments','Verify carrying value, impairment, NAV, FD advices','',''],
+        ['Trade Receivables','Obtain Ageing, float confirmations, check subsequent clearing','',''],
+        ['Cash and Bank','Obtain bank statements, BRS, cash certificates, direct confirmations','',''],
+      ]
+    },
+    { id: 'assets_remarks', label: 'Audit Remarks / Conclusions', type: 'textarea' },
+  ]},
+  { id: '3.10-3.19', chapter: 'Chapter 3: Execution', title: 'Equity & Liabilities', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Equity & Liabilities – Audit Procedures', id: 'liab_table',
+      cols: ['Area', 'Procedure Performed', 'Findings / Observations', 'Status'],
+      colTypes: ['text','textarea','textarea','select-status'],
+      colWidths: ['18%','32%','34%','16%'],
+      rows: [
+        ['Share Capital','Check MCA data, MOA/AOA, shareholders confirmation','',''],
+        ['Borrowings','Obtain agreements, check covenants, direct confirmations','',''],
+        ['Trade Payables','Check ageing, MSME classification, float confirmations','',''],
+        ['Provisions / DTL','Verify actuary reports (gratuity/leave), tax computation','',''],
+      ]
+    },
+    { id: 'liab_remarks', label: 'Audit Remarks / Conclusions', type: 'textarea' },
+  ]},
+  { id: '3.20-3.24', chapter: 'Chapter 3: Execution', title: 'Revenue, Inventory & Expenses', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'P&L and Inventory – Audit Procedures', id: 'pl_table',
+      cols: ['Area', 'Procedure Performed', 'Findings / Observations', 'Status'],
+      colTypes: ['text','textarea','textarea','select-status'],
+      colWidths: ['18%','32%','34%','16%'],
+      rows: [
+        ['Revenue / Income','Perform cut-off testing, analyticals, substantive sampling','',''],
+        ['Inventory','Physical verification, valuation testing (Cost vs NRV)','',''],
+        ['Employee Benefits','Verify payroll sheets, check joining/leaving, actuary reports','',''],
+        ['Other Expenses','Vouching on sample basis, check authorizations, TDS compliance','',''],
+      ]
+    },
+    { id: 'pl_remarks', label: 'Audit Remarks / Conclusions', type: 'textarea' },
+  ]},
+
+  // ---- CHAPTER 4: OTHER PROCEDURES ----
+  { id: '4.1', chapter: 'Chapter 4: Other Procedures', title: 'Going Concern', desc: 'Per SA 570 (Revised)', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Going Concern Indicators', id: 'gc_table',
+      cols: ['Indicator', 'Present?', 'Assessment / Response'],
+      colTypes: ['text','yn-inline','textarea'],
+      colWidths: ['40%','15%','45%'],
+      rows: [
+        ['Net liabilities / recurring net losses','no',''],
+        ['Negative operating cash flows','no',''],
+        ['Non-compliance with statutory requirements','no',''],
+        ['Pending legal/regulatory proceedings','no',''],
+      ]
+    },
+    { id: 'gc_conclusion', label: 'Going Concern Conclusion', type: 'select', options: ['No material uncertainty identified', 'Material uncertainty identified', 'Significant doubt'] },
+  ]},
+  { id: '4.4', chapter: 'Chapter 4: Other Procedures', title: 'Related Party Transactions', desc: 'Per SA 550', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Related Party Transactions', id: 'rpt_table',
+      cols: ['Related Party', 'Nature of Transaction', 'Amount (₹)', 'At Arm\'s Length?', 'Board Approval?'],
+      colTypes: ['text','text','number','yn-inline','yn-inline'],
+      colWidths: ['20%','25%','15%','20%','20%'],
+      rows: [['','','','yes','yes']]
+    },
+    { id: 'rpt_remarks', label: 'Audit Remarks', type: 'textarea' },
+  ]},
+  { id: '4.5-4.10', chapter: 'Chapter 4: Other Procedures', title: 'ICFR, JEs & Secretarial Compliances', fields: [
+    { type: 'header' },
+    { id: 'icfr_conclusion', label: 'ICFR Conclusion (Sec 143(3)(i))', type: 'select', options: ['Adequate ICFR', 'Significant deficiencies', 'Material weakness', 'N/A (Exempt)'] },
+    { id: 'je_conclusion', label: 'Journal Entry Testing (Management Override Risk)', type: 'textarea', placeholder: 'Document findings from reviewing unusual/late/manual JEs...' },
+    { id: 'secretarial_conclusion', label: 'Secretarial Compliances (Registers, Filings, Minutes)', type: 'textarea', placeholder: 'Document verification of MCA filings, register of members, board minutes...' },
+  ]},
+
+  // ---- CHAPTER 5: FINANCIAL REPORTING ----
+  { id: '5.1 & 5.2', chapter: 'Chapter 5: Financial Reporting', title: 'Accounting Policies & Disclosures', fields: [
+    { type: 'header' },
+    { id: 'policies_checked', label: 'Material Accounting Policies Disclosed? (Ind AS 1 / AS 1)', type: 'yn', name: 'policies_checked' },
+    { id: 'notes_checked', label: 'Notes to Accounts appropriately drafted?', type: 'yn', name: 'notes_checked' },
+    { id: 'contingent_liab', label: 'Contingent Liabilities Disclosed? (Ind AS 37)', type: 'yn', name: 'contingent_liab' },
+    { id: 'disclosure_remarks', label: 'Disclosure Remarks', type: 'textarea' },
+  ]},
+  { id: '5.3', chapter: 'Chapter 5: Financial Reporting', title: 'Schedule III Checklist', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Schedule III Compliance', id: 'sch3_table',
+      cols: ['Item', 'Complied?', 'Remarks'],
+      colTypes: ['text','yn-inline','textarea'],
+      colWidths: ['45%','15%','40%'],
+      rows: [
+        ['Current / Non-current segregation','yes',''],
+        ['Trade Payables & Receivables ageing disclosure','yes',''],
+        ['Promoter Shareholding details','yes',''],
+        ['Financial Ratios disclosure','yes',''],
+      ]
+    },
+  ]},
+  { id: '5.4', chapter: 'Chapter 5: Financial Reporting', title: 'CARO 2020 Checklist', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'CARO Clauses', id: 'caro_table',
+      cols: ['Clause', 'Topic', 'Applicable/Complied?', 'Remarks / Adverse Reporting'],
+      colTypes: ['text','text','select-status','textarea'],
+      colWidths: ['10%','35%','15%','40%'],
+      rows: [
+        ['3(i)','PPE & Intangible Assets','Complete',''],
+        ['3(ii)','Inventory Verification & Working Capital','Complete',''],
+        ['3(iii)','Investments, Loans, Guarantees given','Complete',''],
+        ['3(vii)','Statutory Dues Payment','Complete',''],
+        ['3(ix)','Default in Repayment of Borrowings','Complete',''],
+        ['3(xi)','Fraud Reporting','Complete',''],
+      ]
+    },
+  ]},
+
+  // ---- CHAPTER 6: COMPLETION ----
+  { id: '6.1', chapter: 'Chapter 6: Completion', title: 'Audit Report', fields: [
+    { type: 'header' },
+    { id: 'report_type', label: 'Proposed Audit Opinion', type: 'select', options: ['Unmodified (Clean)', 'Qualified', 'Adverse', 'Disclaimer'] },
+    { id: 'eom_paragraph', label: 'Emphasis of Matter / Other Matter required?', type: 'yn', name: 'eom_paragraph' },
+    { id: 'kam_required', label: 'Key Audit Matters (KAM) required? (SA 701)', type: 'yn', name: 'kam_required' },
+    { id: 'report_draft_remarks', label: 'Drafting Notes', type: 'textarea', placeholder: 'Document basis for qualification or KAMs to be included...' },
+  ]},
+  { id: '6.3 & 6.4', chapter: 'Chapter 6: Completion', title: 'EQCR & Management Rep Letter', fields: [
+    { type: 'header' },
+    { id: 'eqcr_done', label: 'Engagement Quality Control Review Completed?', type: 'yn', name: 'eqcr_done' },
+    { id: 'eqcr_reviewer', label: 'EQCR Reviewer Name', type: 'text' },
+    { id: 'mrl_date', label: 'Date of Management Representation Letter (SA 580)', type: 'date' },
+    { id: 'mrl_remarks', label: 'Specific Representations Obtained', type: 'textarea' },
+  ]},
+  { id: '6.5', chapter: 'Chapter 6: Completion', title: 'Summary of Uncorrected Misstatements (SUM/SAD)', fields: [
+    { type: 'header' },
+    { type: 'table', label: 'Uncorrected Misstatements', id: 'sum_table',
+      cols: ['Description', 'Effect on P&L (₹)', 'Effect on Balance Sheet (₹)', 'Remarks'],
+      colTypes: ['text','number','number','textarea'],
+      colWidths: ['35%','15%','15%','35%'],
+      rows: [['','','','']]
+    },
+    { id: 'sum_conclusion', label: 'Conclusion (Are uncorrected misstatements material?)', type: 'textarea' },
+  ]},
+  { id: '6.11', chapter: 'Chapter 6: Completion', title: 'Closure & Archival', fields: [
+    { type: 'header' },
+    { id: 'report_date', label: 'Date of Audit Report', type: 'date' },
+    { id: 'file_assembly_date', label: 'Final File Assembly Date (60-day rule)', type: 'date' },
+    { type: 'table', label: 'File Completion Checklist', id: 'closure_table',
+      cols: ['Item', 'Done?', 'Remarks'],
+      colTypes: ['text','yn-inline','text'],
+      colWidths: ['50%','15%','35%'],
+      rows: [
+        ['All working papers reviewed and signed off','yes',''],
+        ['EQCR completed','yes',''],
+        ['Final financial statements tied back to audit files','yes',''],
+        ['Independence re-confirmed before report signing','yes',''],
+      ]
+    },
+  ]},
+];
+
+// ============================================================
+// STATE
+// ============================================================
+let currentSection = null;
+let formData = {};
+
+let clientInfo = { client: '', task: 'Statutory Audit', period: '', prepared_name: '', prepared_init: '', reviewed_name: '', reviewed_init: '', approved_name: '', approved_init: '' };
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.innerText = msg;
+  toast.className = "show";
+  setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+}
+
+// ============================================================
+// NAV TREE BUILD
+// ============================================================
+function buildNav() {
+  const nav = document.getElementById('nav-tree');
+  nav.innerHTML = '';
+  let lastChapter = '';
+  SECTIONS.forEach(sec => {
+    if (sec.chapter !== lastChapter) {
+      lastChapter = sec.chapter;
+      const div = document.createElement('div');
+      div.className = 'nav-chapter';
+      div.textContent = sec.chapter.split(':')[1]?.trim() || sec.chapter;
+      nav.appendChild(div);
+    }
+    const a = document.createElement('a');
+    a.className = 'nav-item';
+    a.id = 'nav-' + sec.id.replace(/[^a-zA-Z0-9]/g, '');
+    a.innerHTML = `<span class="nav-section-num">${sec.id}</span>${sec.title}`;
+    a.onclick = () => showSection(sec.id);
+    nav.appendChild(a);
+  });
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function showLanding() {
+  currentSection = null;
+  document.getElementById('bc-chapter').textContent = 'Home';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div id="landing">
+      <div class="icai-logo-box"><span>ICAI</span></div>
+      <h1>Audit Working Paper Booklet</h1>
+      <p>Complete, structured working papers for your statutory audit engagement — based on ICAI AASB Templates (June 2023). Fill in each section and print the entire booklet as a PDF.</p>
+      <div style="margin-bottom:20px;width:100%;max-width:700px;">
+        <div class="card">
+          <h3>Client & Engagement Details</h3>
+          <div class="cols-3">
+            <div class="form-group"><label>Client Name</label><input type="text" placeholder="XYZ Company Pvt Ltd" value="${clientInfo.client}" oninput="clientInfo.client=this.value"></div>
+            <div class="form-group"><label>Task</label><input type="text" placeholder="Statutory Audit" value="${clientInfo.task}" oninput="clientInfo.task=this.value"></div>
+            <div class="form-group"><label>Period</label><input type="text" placeholder="Year ended March 31, 20xx" value="${clientInfo.period}" oninput="clientInfo.period=this.value"></div>
+          </div>
+          <div class="cols-3">
+            <div class="form-group"><label>Prepared By</label><input type="text" placeholder="Name" value="${clientInfo.prepared_name}" oninput="clientInfo.prepared_name=this.value"></div>
+            <div class="form-group"><label>Reviewed By</label><input type="text" placeholder="Name" value="${clientInfo.reviewed_name}" oninput="clientInfo.reviewed_name=this.value"></div>
+            <div class="form-group"><label>Approved By</label><input type="text" placeholder="Name" value="${clientInfo.approved_name}" oninput="clientInfo.approved_name=this.value"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chapter-grid">${buildChapterCards()}</div>
+      <p style="margin-top:28px;font-size:12px;color:var(--ink-faint);">ICAI AASB Audit Working Paper Templates · June 2023 · For professional use</p>
+    </div>
+  `;
+}
+
+function buildChapterCards() {
+  const chapters = {};
+  SECTIONS.forEach(s => {
+    const ch = s.chapter;
+    if (!chapters[ch]) chapters[ch] = { title: ch, secs: [] };
+    chapters[ch].secs.push(s);
+  });
+  return Object.values(chapters).map((ch, i) => {
+    const num = `CH ${i+1}`;
+    const shortTitle = ch.title.split(':')[1]?.trim() || ch.title;
+    return `<div class="chapter-card" onclick="showSection('${ch.secs[0].id}')">
+      <div class="num">${num}</div>
+      <h3>${shortTitle}</h3>
+      <div class="count">${ch.secs.length} working papers</div>
+    </div>`;
+  }).join('');
+}
+
+function showSection(id) {
+  currentSection = id;
+  const sec = SECTIONS.find(s => s.id === id);
+  if (!sec) return;
+
+  document.getElementById('bc-chapter').textContent = `${sec.chapter} › ${sec.id}`;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById('nav-' + id.replace(/[^a-zA-Z0-9]/g, ''));
+  if (navEl) { navEl.classList.add('active'); navEl.scrollIntoView({block:'nearest'}); }
+
+  if (!formData[id]) formData[id] = {};
+
+  const idx = SECTIONS.findIndex(s => s.id === id);
+  const prevSec = idx > 0 ? SECTIONS[idx-1] : null;
+  const nextSec = idx < SECTIONS.length-1 ? SECTIONS[idx+1] : null;
+
+  let html = `
+    <div class="section-header">
+      <div class="chapter-tag">${sec.chapter} &mdash; Section ${sec.id}</div>
+      <h2>${sec.title}</h2>
+      ${sec.desc ? `<p class="note">${sec.desc}</p>` : ''}
+    </div>
+  `;
+
+  sec.fields.forEach(field => {
+    html += renderField(field, id);
+  });
+
+  html += `<div class="section-nav">
+    ${prevSec ? `<button onclick="saveCurrentAndGo('${prevSec.id}')">&#8592; Previous</button>` : '<span></span>'}
+    ${nextSec ? `<button class="next" onclick="saveCurrentAndGo('${nextSec.id}')">Next &#8594;</button>` : '<button class="next" onclick="showLanding()">Finish &#10003;</button>'}
+  </div>`;
+
+  document.getElementById('content').innerHTML = html;
+  restoreValues(id);
+}
+
+function renderField(field, secId) {
+  if (field.type === 'header') {
+    return `<div class="signoff-grid">
+      <div class="signoff-item">
+        <div class="lbl"><label>Chapter / Section</label></div>
+        <input type="text" value="${secId}" readonly style="background:#f0f4fb; pointer-events:none;">
+      </div>
+      <div class="signoff-item">
+        <div class="lbl"><label>Client</label></div>
+        <input type="text" value="${clientInfo.client}" placeholder="Client Name" oninput="clientInfo.client=this.value">
+      </div>
+      <div class="signoff-item">
+        <div class="lbl"><label>Period</label></div>
+        <input type="text" value="${clientInfo.period}" placeholder="Year ended..." oninput="clientInfo.period=this.value">
+      </div>
+    </div>`;
+  }
+
+  if (field.type === 'info') {
+    return `<div class="card" style="background:var(--amber-muted);border-color:#c49a3a;margin-bottom:16px"><p style="font-size:13px;color:var(--amber)">${field.text}</p></div>`;
+  }
+
+  if (field.type === 'table') {
+    return renderTable(field, secId);
+  }
+
+  if (field.type === 'yn') {
+    return `<div class="form-group">
+      <label>${field.label}</label>
+      <div class="yn-toggle">
+        <input type="radio" name="${field.name}_${secId}" id="${field.name}_yes_${secId}" value="yes">
+        <label for="${field.name}_yes_${secId}">Yes</label>
+        <input type="radio" name="${field.name}_${secId}" id="${field.name}_no_${secId}" value="no">
+        <label for="${field.name}_no_${secId}">No</label>
+        <input type="radio" name="${field.name}_${secId}" id="${field.name}_na_${secId}" value="na">
+        <label for="${field.name}_na_${secId}">N/A</label>
+      </div>
+    </div>`;
+  }
+
+  if (field.type === 'select') {
+    const opts = field.options.map(o => `<option value="${o}">${o}</option>`).join('');
+    return `<div class="form-group"><label>${field.label}</label><select id="field-${field.id}" data-field="${field.id}">${opts}</select></div>`;
+  }
+
+  const inputType = field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text';
+  if (field.type === 'textarea') {
+    return `<div class="form-group">
+      <label>${field.label}</label>
+      <textarea id="field-${field.id}" data-field="${field.id}" placeholder="${field.placeholder||''}" rows="4"></textarea>
+    </div>`;
+  }
+
+  return `<div class="form-group">
+    <label>${field.label}</label>
+    <input type="${inputType}" id="field-${field.id}" data-field="${field.id}" placeholder="${field.placeholder||''}">
+  </div>`;
+}
+
+function renderTable(field, secId) {
+  const savedRows = formData[secId]?.[field.id] || field.rows;
+  let thead = '<tr>' + field.cols.map((c,i) => `<th style="width:${field.colWidths[i]}">${c}</th>`).join('') + '</tr>';
+  let tbody = savedRows.map((row, ri) => {
+    const cells = field.cols.map((col, ci) => {
+      const ct = field.colTypes[ci];
+      const val = row[ci] !== undefined ? row[ci] : '';
+      if (ct === 'row-num') return `<td class="row-num">${ri+1}</td>`;
+      if (ct === 'textarea') return `<td><textarea rows="2" data-table="${field.id}" data-row="${ri}" data-col="${ci}">${val}</textarea></td>`;
+      if (ct === 'date') return `<td><input type="date" value="${val}" data-table="${field.id}" data-row="${ri}" data-col="${ci}"></td>`;
+      if (ct === 'number') return `<td><input type="number" value="${val}" data-table="${field.id}" data-row="${ri}" data-col="${ci}"></td>`;
+      if (ct === 'risk') return `<td><select class="risk-select risk-${val}" data-table="${field.id}" data-row="${ri}" data-col="${ci}" onchange="updateRiskClass(this)">
+        <option value="high" ${val==='high'?'selected':''}>High</option>
+        <option value="medium" ${val==='medium'?'selected':''}>Medium</option>
+        <option value="low" ${val==='low'?'selected':''}>Low</option>
+      </select></td>`;
+      if (ct === 'yn-inline') return `<td><select data-table="${field.id}" data-row="${ri}" data-col="${ci}">
+        <option value="yes" ${val==='yes'?'selected':''}>Yes</option>
+        <option value="no" ${val==='no'?'selected':''}>No</option>
+        <option value="na" ${val==='na'?'selected':''}>N/A</option>
+      </select></td>`;
+      if (ct === 'select-status') return `<td><select data-table="${field.id}" data-row="${ri}" data-col="${ci}">
+        <option value="" ${val===''?'selected':''}>—</option>
+        <option value="Complete" ${val==='Complete'?'selected':''}>Complete</option>
+        <option value="In Progress" ${val==='In Progress'?'selected':''}>In Progress</option>
+        <option value="N/A" ${val==='N/A'?'selected':''}>N/A</option>
+        <option value="Issue" ${val==='Issue'?'selected':''}>Issue</option>
+      </select></td>`;
+      // default text
+      return `<td><input type="text" value="${String(val).replace(/"/g,'&quot;')}" data-table="${field.id}" data-row="${ri}" data-col="${ci}"></td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+
+  return `<div class="card">
+    <h3>${field.label}</h3>
+    <div style="overflow-x:auto">
+      <table class="table-editor" id="tbl-${field.id}">
+        <thead>${thead}</thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>
+    <button class="add-row-btn" onclick="addTableRow('${field.id}', '${secId}')">+ Add Row</button>
+  </div>`;
+}
+
+function updateRiskClass(el) { el.className = `risk-select risk-${el.value}`; }
+
+function addTableRow(tableId, secId) {
+  const sec = SECTIONS.find(s => s.id === secId);
+  const field = sec.fields.find(f => f.id === tableId);
+  if (!field) return;
+  if (!formData[secId]) formData[secId] = {};
+  if (!formData[secId][tableId]) formData[secId][tableId] = JSON.parse(JSON.stringify(field.rows));
+
+  saveTableData(tableId, secId, field);
+  const newRow = field.cols.map((_, ci) => {
+    const ct = field.colTypes[ci];
+    if (ct === 'row-num') return '';
+    if (ct === 'yn-inline') return 'yes';
+    if (ct === 'risk') return 'medium';
+    return '';
+  });
+  formData[secId][tableId].push(newRow);
+  showSection(secId);
+}
+
+function saveTableData(tableId, secId, field) {
+  const tbl = document.getElementById('tbl-' + tableId);
+  if (!tbl) return;
+  const rows = tbl.querySelectorAll('tbody tr');
+  if (!formData[secId]) formData[secId] = {};
+  formData[secId][tableId] = Array.from(rows).map((tr, ri) => {
+    return field.cols.map((_, ci) => {
+      const el = tr.querySelector(`[data-row="${ri}"][data-col="${ci}"]`);
+      return el ? el.value : '';
+    });
+  });
+}
+
+function restoreValues(secId) {
+  if (!formData[secId]) return;
+  const d = formData[secId];
+  const sec = SECTIONS.find(s => s.id === secId);
+
+  sec.fields.forEach(f => {
+    if (f.type === 'yn' && d[f.name] !== undefined) {
+      const radio = document.getElementById(`${f.name}_${d[f.name]}_${secId}`);
+      if (radio) radio.checked = true;
+    }
+    if ((f.type === 'text' || f.type === 'textarea' || f.type === 'date' || f.type === 'number' || f.type === 'select') && d[f.id] !== undefined) {
+      const el = document.getElementById('field-' + f.id);
+      if (el) el.value = d[f.id];
+    }
+  });
+}
+
+function saveCurrentSection() {
+  if (!currentSection) return;
+  const sec = SECTIONS.find(s => s.id === currentSection);
+  if (!formData[currentSection]) formData[currentSection] = {};
+
+  sec.fields.forEach(f => {
+    if (f.type === 'table') {
+      saveTableData(f.id, currentSection, f);
+    } else if (f.type === 'yn') {
+      const radios = document.querySelectorAll(`input[name="${f.name}_${currentSection}"]`);
+      radios.forEach(r => { if (r.checked) formData[currentSection][f.name] = r.value; });
+    } else if (f.type === 'text' || f.type === 'textarea' || f.type === 'date' || f.type === 'number' || f.type === 'select') {
+      const el = document.getElementById('field-' + f.id);
+      if (el) formData[currentSection][f.id] = el.value;
+    }
+  });
+}
+
+function saveCurrentAndGo(id) {
+  saveCurrentSection();
+  showSection(id);
+}
+
+function saveProgress() {
+  saveCurrentSection();
+  const data = { clientInfo, formData, savedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `audit_workpapers_${(clientInfo.client||'draft').replace(/\s+/g,'_')}.json`;
+  a.click();
+  showToast("Data saved successfully!");
+}
+
+function loadProgress() {
+  document.getElementById('file-load').click();
+}
+
+function handleLoad(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      clientInfo = data.clientInfo || clientInfo;
+      formData = data.formData || {};
+      showToast('Data loaded successfully!');
+      showLanding();
+    } catch { showToast('Error reading file. Please use a valid JSON.'); }
+  };
+  reader.readAsText(file);
+}
+
+// ============================================================
+// PRINT ALL FUNCTIONALITY
+// ============================================================
+function printBooklet() {
+  saveCurrentSection(); // ensure current view is saved
+  
+  const pc = document.getElementById('print-container');
+  let html = `
+    <div class="print-cover print-page">
+      <h1>Audit Working Papers</h1>
+      <h2 style="margin-top:40px;">${clientInfo.client || '[Client Name Not Provided]'}</h2>
+      <h3>Statutory Audit for the period: ${clientInfo.period || '[Period Not Provided]'}</h3>
+      
+      <div class="print-signoff">
+         <p><b>Prepared By:</b> ${clientInfo.prepared_name || '______________'} (${clientInfo.prepared_init || '_'})</p>
+         <p><b>Reviewed By:</b> ${clientInfo.reviewed_name || '______________'} (${clientInfo.reviewed_init || '_'})</p>
+         <p><b>Approved By:</b> ${clientInfo.approved_name || '______________'} (${clientInfo.approved_init || '_'})</p>
+      </div>
+    </div>
+  `;
+
+  SECTIONS.forEach(sec => {
+    html += `<div class="print-page">`;
+    html += `<div class="print-header">
+               <div class="print-header-meta">
+                 <span><b>${sec.chapter}</b> | Section ${sec.id}</span>
+                 <span>Client: ${clientInfo.client || '___'} | Period: ${clientInfo.period || '___'}</span>
+               </div>
+               <h2>${sec.title}</h2>
+             </div>`;
+             
+    sec.fields.forEach(f => {
+      if(f.type === 'header') return; // Handled by global header
+      if(f.type === 'info') {
+         html += `<p style="font-style:italic; color:#555; margin-bottom:10px;">Note: ${f.text}</p>`;
+      } else if (f.type === 'table') {
+         html += `<h3 style="margin-top:15px; font-size:12pt;">${f.label}</h3>`;
+         html += `<table class="print-table"><thead><tr>`;
+         f.cols.forEach(c => html += `<th>${c}</th>`);
+         html += `</tr></thead><tbody>`;
+         const rows = formData[sec.id]?.[f.id] || f.rows;
+         rows.forEach((r, ri) => {
+            html += `<tr>`;
+            f.cols.forEach((col, ci) => {
+               let val = r[ci] || '';
+               if(f.colTypes[ci] === 'row-num') val = ri + 1;
+               html += `<td>${val}</td>`;
+            });
+            html += `</tr>`;
+         });
+         html += `</tbody></table>`;
+      } else if (f.type === 'yn') {
+         const val = formData[sec.id]?.[f.name] || 'Not answered';
+         html += `<div class="print-field">
+                    <span class="print-label">${f.label}:</span>
+                    <span class="print-value" style="text-transform: capitalize;">${val}</span>
+                  </div>`;
+      } else {
+         const val = formData[sec.id]?.[f.id] || '__________________';
+         html += `<div class="print-field">
+                    <span class="print-label">${f.label}:</span>
+                    <div class="print-value">${val}</div>
+                  </div>`;
+      }
+    });
+    
+    html += `</div>`;
+  });
+  
+  pc.innerHTML = html;
+  
+  // Trigger browser print
+  window.print();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+buildNav();
+showLanding();
+</script>
+</body>
+</html>
