@@ -276,6 +276,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
     <div class="nav-sec">CA Tools</div>
     <div class="ni" data-p="taxaudit" onclick="nav('taxaudit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/><path d="M8 7h8M8 17h4"/></svg>Tax Audit 44AB</div>
     <div class="ni" data-p="challanreader" onclick="nav('challanreader')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>PF &amp; ESIC Challan</div>
+    <div class="ni" data-p="workpapers" onclick="nav('workpapers')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>Audit Working Papers</div>
     <div class="nav-sec">Admin</div>
     <div class="ni" data-p="programs" onclick="nav('programs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Audit Programs</div>
     <div class="ni" data-p="users" onclick="nav('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users</div>
@@ -534,9 +535,9 @@ document.getElementById('lu').addEventListener('keypress',e=>{if(e.key==='Enter'
 function nav(p){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   document.querySelector(`.ni[data-p="${p}"]`)?.classList.add('on');
-  const t={dashboard:'Dashboard',clients:'Clients',engagements:'Engagements',tasks:'Tasks',queries:'Query Sheet',programs:'Audit Programs',users:'User Management',logs:'Audit Logs'};
+  const t={dashboard:'Dashboard',clients:'Clients',engagements:'Engagements',tasks:'Tasks',queries:'Query Sheet',programs:'Audit Programs',workpapers:'Audit Working Papers',users:'User Management',logs:'Audit Logs'};
   document.getElementById('pt').textContent=t[p]||p;document.getElementById('pa').innerHTML='';
-  ({dashboard:lDash,clients:lClients,engagements:lEng,tasks:lTasks,queries:lQueries,programs:lProg,users:lUsers,logs:lLogs,invoices:lInvoices,docregister:lDocReg,calendar:lCalendar,reports:lReports,taxaudit:lTaxAudit,challanreader:lChallanReader,firmsettings:lFirmSettings})[p]?.()
+  ({dashboard:lDash,clients:lClients,engagements:lEng,tasks:lTasks,queries:lQueries,programs:lProg,users:lUsers,logs:lLogs,invoices:lInvoices,docregister:lDocReg,calendar:lCalendar,reports:lReports,taxaudit:lTaxAudit,challanreader:lChallanReader,workpapers:lWorkpapers,firmsettings:lFirmSettings})[p]?.()
 }
 
 function sb(s){const m={'Pending':'pen','In Progress':'prog','Completed':'comp','Under Review':'rev','Approved':'app','Rejected':'rej'};return`<span class="bg bg-${m[s]||'pen'}">${s}</span>`}
@@ -2234,7 +2235,73 @@ async function exportChallanExcel(){
     toast('Form 3CD Excel downloaded!');
   }catch(e){ toast(e.message,'err'); }
 }
+// ── AUDIT WORKING PAPERS ──────────────────────
+function lWorkpapers() {
+  document.getElementById('pa').innerHTML = `
+    <a href="/tools/workpapers" target="_blank" class="btn btn-g">
+      &#8599; Open Full Working Paper Tool
+    </a>`;
 
+  document.getElementById('pb').innerHTML = `
+    <div class="card" style="margin-bottom:16px;border-left:4px solid var(--icai-navy)">
+      <div class="card-h">ICAI Audit Working Paper Booklet</div>
+      <div class="card-b">
+        <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.7">
+          A comprehensive digital working paper tool based on <strong>ICAI AASB Templates (June 2023)</strong>.
+          Covers all 6 chapters of the audit lifecycle — from appointment to completion and archival.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+          ${[
+            ['Chapter 1','Appointment','Engagement letter, ADT-1, Independence, KYC'],
+            ['Chapter 2','Planning','Materiality, Risk Assessment, Audit Strategy, Variance Analysis'],
+            ['Chapter 3','Execution','PPE, Receivables, Payables, Revenue, Inventory, Bank'],
+            ['Chapter 4','Other Procedures','Going Concern, Related Parties, ICFR, Journal Entries'],
+            ['Chapter 5','Financial Reporting','Schedule III, CARO 2020, Disclosures, Accounting Policies'],
+            ['Chapter 6','Completion','Audit Report, EQCR, MRL, SUM/SAD, Archival Checklist'],
+          ].map(([num,title,desc]) => `
+            <div style="background:var(--surface2);border:1px solid var(--border-l);border-radius:var(--r-lg);padding:14px 16px">
+              <div style="font-size:10px;font-weight:700;color:var(--icai-navy);letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px">${num}</div>
+              <div style="font-weight:700;font-size:13px;color:var(--icai-navy);margin-bottom:4px">${title}</div>
+              <div style="font-size:11.5px;color:var(--text3);line-height:1.5">${desc}</div>
+            </div>`).join('')}
+        </div>
+        <div style="background:var(--info-bg);border:1px solid var(--info-bd);border-radius:var(--r);padding:12px 16px;font-size:12.5px;color:var(--info);margin-bottom:16px">
+          <strong>Features:</strong> Fill-in forms for each working paper section · Yes/No/N/A toggles · 
+          Risk level indicators · Editable tables with add-row · Save progress as JSON · Load saved data · 
+          Print complete booklet as PDF
+        </div>
+        <div style="display:flex;gap:10px">
+          <a href="/tools/workpapers" target="_blank" class="btn btn-p" style="text-decoration:none">
+            &#8599; Open Working Paper Tool
+          </a>
+          <span style="font-size:12px;color:var(--text3);align-self:center">
+            Opens in a new tab — data is saved locally in your browser
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">How to Use</div>
+      <div class="card-b">
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+          ${[
+            ['1','Open the tool','Click "Open Working Paper Tool" — it opens in a full browser tab'],
+            ['2','Fill Client Details','On the home screen, enter client name, period, and team member names'],
+            ['3','Work through chapters','Navigate using the sidebar — fill each working paper section'],
+            ['4','Save your progress','Click "Save Data" to download a JSON file with all your entries'],
+            ['5','Resume later','Click "Load Data" and upload the JSON file to restore all entries'],
+            ['6','Print the booklet','Click "Print Full Working File" to generate a complete PDF booklet'],
+          ].map(([n,t,d]) => `
+            <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 12px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border-l)">
+              <div style="width:24px;height:24px;background:var(--icai-navy);color:var(--icai-gold-l);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${n}</div>
+              <div><strong>${t}</strong><br><span style="color:var(--text2)">${d}</span></div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+  
 </script>
 </body>
 </html>
