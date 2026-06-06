@@ -1421,6 +1421,192 @@ def report_overview():
         "tasks_due_soon": due_soon,
         "query_avg_tat_days": None
     })
+# ═══════════════════════════════════════════════════════════════
+#  AUDIT BOOKLET GENERATOR
+#  Add this block to main.py BEFORE the /api/health route
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/booklet/generate/<int:eid>")
+@login_required
+def gen_booklet(eid):
+    import tempfile, os
+    try:
+        from booklet_generator import generate_booklet
+    except ImportError:
+        return jsonify({"detail": "python-docx not installed or booklet_generator.py missing"}), 500
+
+    db_conn = get_db()
+
+    # Engagement + client details
+    eng = qry("""SELECT e.*, c.name as client_name, c.pan, c.gstin
+                 FROM engagements e JOIN clients c ON e.client_id=c.id
+                 WHERE e.id=%s AND e.firm_id=%s""",
+              (eid, g.firm_id), one=True)
+    if not eng:
+        return jsonify({"detail": "Not found"}), 404
+
+    # Build team list
+    seen_ids = set()
+    team = []
+    if eng.get("team_leader_id"):
+        tl = qry("SELECT * FROM users WHERE id=%s", (eng["team_leader_id"],), one=True)
+        if tl:
+            team.append({"full_name": tl["full_name"], "role": "Team Leader",
+                         "email": tl.get("email","")})
+            seen_ids.add(tl["id"])
+
+    for m in qry("""SELECT u.* FROM engagement_teams et
+                    JOIN users u ON et.user_id=u.id
+                    WHERE et.engagement_id=%s""", (eid,)):
+        if m["id"] not in seen_ids:
+            team.append({"full_name": m["full_name"], "role": m.get("role","Member"),
+                         "email": m.get("email","")})
+            seen_ids.add(m["id"])
+
+    # Task assignees
+    for m in qry("""SELECT DISTINCT u.* FROM task_assignees ta
+                    JOIN tasks t ON ta.task_id=t.id
+                    JOIN users u ON ta.user_id=u.id
+                    WHERE t.engagement_id=%s""", (eid,)):
+        if m["id"] not in seen_ids:
+            team.append({"full_name": m["full_name"], "role": m.get("role","Audit Member"),
+                         "email": m.get("email","")})
+            seen_ids.add(m["id"])
+
+    # Tasks
+    tasks_raw = qry("SELECT * FROM tasks WHERE engagement_id=%s AND firm_id=%s ORDER BY id",
+                    (eid, g.firm_id))
+
+    # Assignee names per task
+    task_assignee_names = {}
+    if tasks_raw:
+        tids = [t["id"] for t in tasks_raw]
+        ph = ",".join(["%s"] * len(tids))
+        for row in qry(f"""SELECT ta.task_id, u.full_name
+                           FROM task_assignees ta JOIN users u ON ta.user_id=u.id
+                           WHERE ta.task_id IN ({ph})
+                           ORDER BY u.full_name""", tids):
+            task_assignee_names.setdefault(row["task_id"], []).append(row["full_name"])
+        # Fallback to legacy assignee_id
+        for t in tasks_raw:
+            if t["id"] not in task_assignee_names and t.get("assignee_id"):
+                u = qry("SELECT full_name FROM users WHERE id=%s",
+                        (t["assignee_id"],), one=True)
+                if u:
+                    task_assignee_names[t["id"]] = [u["full_name"]]
+
+    tasks = [{
+        "id":                t["id"],
+        "title":             t["title"],
+        "area":              t.get("area",""),
+        "status":            t["status"],
+        "priority":          t.get("priority",""),
+        "due_date":          str(t["due_date"]) if t.get("due_date") else "",
+        "working_paper_ref": t.get("working_paper_ref",""),
+        "description":       t.get("description",""),
+        "assignee_name":     ", ".join(task_assignee_names.get(t["id"], [])) or "Unassigned"
+    } for t in tasks_raw]
+
+    tids_all = [t["id"] for t in tasks_raw]
+
+    # Comments by task
+    cbt = {}
+    if tids_all:
+        ph = ",".join(["%s"] * len(tids_all))
+        for c in qry(f"""SELECT c.*, u.full_name as author_name
+                         FROM comments c JOIN users u ON c.author_id=u.id
+                         WHERE c.task_id IN ({ph})
+                         ORDER BY c.created_at""", tids_all):
+            cbt.setdefault(c["task_id"], []).append({
+                "author_name": c["author_name"],
+                "content":     c["content"],
+                "is_query":    c["is_query"],
+                "created_at":  str(c["created_at"])[:16] if c.get("created_at") else ""
+            })
+
+    # Reviews by task
+    rbt = {}
+    if tids_all:
+        ph = ",".join(["%s"] * len(tids_all))
+        for r in qry(f"""SELECT r.*, u.full_name as reviewer_name
+                         FROM reviews r JOIN users u ON r.reviewer_id=u.id
+                         WHERE r.task_id IN ({ph})
+                         ORDER BY r.reviewed_at""", tids_all):
+            rbt.setdefault(r["task_id"], []).append({
+                "reviewer_name": r["reviewer_name"],
+                "action":        r["action"],
+                "remarks":       r.get("remarks",""),
+                "reviewed_at":   str(r["reviewed_at"])[:16] if r.get("reviewed_at") else ""
+            })
+
+    # Queries
+    queries = qry("""SELECT q.*, u.full_name as raised_by_name
+                     FROM queries q LEFT JOIN users u ON q.raised_by_id=u.id
+                     WHERE q.engagement_id=%s AND q.firm_id=%s
+                     ORDER BY q.sr_no""", (eid, g.firm_id))
+
+    # Generate file in temp directory
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".docx", delete=False,
+        dir=os.path.join(os.path.dirname(__file__), "static"))
+    tmp.close()
+    fp = tmp.name
+
+    generate_booklet(
+        eng, tasks, cbt, rbt,
+        [{
+            "sr_no":         q["sr_no"],
+            "query_text":    q["query_text"],
+            "response":      q.get("response",""),
+            "status":        q["status"],
+            "raised_by_name":q.get("raised_by_name",""),
+            "raised_date":   str(q.get("raised_date",""))
+        } for q in queries],
+        team, fp,
+        firm_name=g.user.get("firm_id",""),  # will be resolved below
+        firm_reg_no=""
+    )
+
+    # Get firm name for booklet footer
+    firm = qry("SELECT * FROM firms WHERE id=%s", (g.firm_id,), one=True)
+    firm_name_str = firm["name"] if firm else ""
+
+    # Regenerate with correct firm name
+    os.unlink(fp)
+    tmp2 = tempfile.NamedTemporaryFile(
+        suffix=".docx", delete=False,
+        dir=os.path.join(os.path.dirname(__file__), "static"))
+    tmp2.close()
+    fp2 = tmp2.name
+
+    generate_booklet(
+        eng, tasks, cbt, rbt,
+        [{
+            "sr_no":         q["sr_no"],
+            "query_text":    q["query_text"],
+            "response":      q.get("response",""),
+            "status":        q["status"],
+            "raised_by_name":q.get("raised_by_name",""),
+            "raised_date":   str(q.get("raised_date",""))
+        } for q in queries],
+        team, fp2,
+        firm_name=firm_name_str,
+        firm_reg_no=firm.get("reg_no","") if firm else ""
+    )
+
+    log_action(g.firm_id, g.user["id"], "GENERATE_BOOKLET", "Engagement", eid,
+               f"Generated booklet for engagement #{eid}")
+
+    client_name = (eng.get("client_name") or "Engagement").replace(" ", "_")
+    fy = eng.get("financial_year","").replace("-","_")
+    download_name = f"Audit_Booklet_{client_name}_{fy}.docx"
+
+    return send_file(
+        fp2,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 # ═══════════════════════════════════════════════════════════════
 #  HEALTH CHECK
