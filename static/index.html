@@ -835,6 +835,11 @@ async function lLogs(){
 async function dlLog(id){if(!confirm('Delete this log entry?'))return;try{await api(`/api/audit-logs/${id}`,{method:'DELETE'});toast('Log deleted');lLogs()}catch(e){toast(e.message,'err')}}
 async function clearLogs(){if(!confirm('Clear ALL audit logs permanently? This cannot be undone.'))return;try{await api('/api/audit-logs/clear',{method:'DELETE'});toast('All logs cleared');lLogs()}catch(e){toast(e.message,'err')}}
 
+function lWorkpapers(){
+  document.getElementById('pa').innerHTML=`<a href="/tools/workpapers" target="_blank" class="btn btn-g" style="text-decoration:none">&#8599; Open Full Working Paper Tool</a>`;
+  document.getElementById('pb').innerHTML=`<div class="card"><div class="card-h">ICAI Audit Working Paper Booklet</div><div class="card-b"><p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.7">A comprehensive digital working paper tool based on <strong>ICAI AASB Templates (June 2023)</strong>. Covers all 6 chapters — from appointment to completion and archival.</p><a href="/tools/workpapers" target="_blank" class="btn btn-p" style="text-decoration:none">&#8599; Open Working Paper Tool</a></div></div>`;
+}
+  
 // INIT - subscription gate first, then verify JWT
 async function initApp(){
   // Step 1: Check subscription
