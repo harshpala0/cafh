@@ -1,6 +1,6 @@
 """
-Audit Booklet Generator — generates a .docx working paper booklet
-for a given engagement. Called from /api/booklet/generate/<eid>
+booklet_generator.py — place in repo root alongside main.py
+Generates a .docx audit working paper booklet for an engagement.
 """
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
@@ -21,7 +21,7 @@ def _set_cell_bg(cell, hex_color):
     tcPr.append(shd)
 
 
-def _add_heading(doc, text, level=1, color="003366"):
+def _heading(doc, text, level=1, color="003366"):
     p = doc.add_heading(text, level=level)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     for run in p.runs:
@@ -33,19 +33,18 @@ def _add_heading(doc, text, level=1, color="003366"):
     return p
 
 
-def _add_kv(doc, label, value, bold_label=True):
+def _kv(doc, label, value):
     p = doc.add_paragraph()
     r1 = p.add_run(f"{label}: ")
-    r1.bold = bold_label
+    r1.bold = True
     r1.font.size = Pt(10)
     r2 = p.add_run(str(value) if value else "—")
     r2.font.size = Pt(10)
-    return p
 
 
-def _add_table_header(table, headers, bg="003366", fg="DAA520"):
-    hdr_row = table.rows[0]
-    for i, (cell, header) in enumerate(zip(hdr_row.cells, headers)):
+def _tbl_header(table, headers, bg="003366", fg="DAA520"):
+    row = table.rows[0]
+    for cell, header in zip(row.cells, headers):
         cell.text = header
         _set_cell_bg(cell, bg)
         for para in cell.paragraphs:
@@ -65,16 +64,14 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                      firm_name="", firm_reg_no=""):
     doc = Document()
 
-    # ── Page margins ──────────────────────────────────────────
+    # Page margins
     for section in doc.sections:
         section.top_margin    = Cm(2)
         section.bottom_margin = Cm(2)
         section.left_margin   = Cm(2.5)
         section.right_margin  = Cm(2.5)
 
-    # ══════════════════════════════════════════════════════════
-    #  COVER PAGE
-    # ══════════════════════════════════════════════════════════
+    # ── COVER PAGE ──────────────────────────────────────────
     doc.add_paragraph()
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -92,68 +89,68 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
 
     sub2 = doc.add_paragraph()
     sub2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r2 = sub2.add_run(f"{eng.get('engagement_type','')} — FY {eng.get('financial_year','')}")
+    r2 = sub2.add_run(
+        f"{eng.get('engagement_type', '')} — FY {eng.get('financial_year', '')}"
+    )
     r2.font.size = Pt(13)
     r2.font.color.rgb = RGBColor(80, 80, 80)
 
     doc.add_paragraph()
 
-    # Firm details box
+    # Firm info table
     tbl = doc.add_table(rows=1, cols=2)
     tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     tbl.style = 'Table Grid'
     tbl.rows[0].cells[0].text = "Prepared by"
     tbl.rows[0].cells[1].text = firm_name or "CA Firm"
     if firm_reg_no:
-        row = tbl.add_row()
-        row.cells[0].text = "Firm Reg. No."
-        row.cells[1].text = firm_reg_no
-    row2 = tbl.add_row()
-    row2.cells[0].text = "Generated on"
-    row2.cells[1].text = datetime.now().strftime("%d %B %Y, %I:%M %p")
-    row3 = tbl.add_row()
-    row3.cells[0].text = "Period"
-    row3.cells[1].text = f"{eng.get('period_from','—')} to {eng.get('period_to','—')}"
+        r_ = tbl.add_row()
+        r_.cells[0].text = "Firm Reg. No."
+        r_.cells[1].text = firm_reg_no
+    r2_ = tbl.add_row()
+    r2_.cells[0].text = "Generated on"
+    r2_.cells[1].text = datetime.now().strftime("%d %B %Y, %I:%M %p")
+    r3_ = tbl.add_row()
+    r3_.cells[0].text = "Period"
+    r3_.cells[1].text = (
+        f"{eng.get('period_from', '—')} to {eng.get('period_to', '—')}"
+    )
 
     doc.add_page_break()
 
-    # ══════════════════════════════════════════════════════════
-    #  SECTION 1: ENGAGEMENT DETAILS
-    # ══════════════════════════════════════════════════════════
-    _add_heading(doc, "1. Engagement Details")
-    _add_kv(doc, "Client",           eng.get("client_name",""))
-    _add_kv(doc, "PAN",              eng.get("pan",""))
-    _add_kv(doc, "GSTIN",            eng.get("gstin",""))
-    _add_kv(doc, "Engagement Type",  eng.get("engagement_type",""))
-    _add_kv(doc, "Financial Year",   eng.get("financial_year",""))
-    _add_kv(doc, "Period",           f"{eng.get('period_from','—')} to {eng.get('period_to','—')}")
-    _add_kv(doc, "Status",           eng.get("status",""))
-    _add_kv(doc, "Notes",            eng.get("notes",""))
+    # ── SECTION 1: ENGAGEMENT DETAILS ───────────────────────
+    _heading(doc, "1. Engagement Details")
+    _kv(doc, "Client",          eng.get("client_name", ""))
+    _kv(doc, "PAN",             eng.get("pan", ""))
+    _kv(doc, "GSTIN",           eng.get("gstin", ""))
+    _kv(doc, "Engagement Type", eng.get("engagement_type", ""))
+    _kv(doc, "Financial Year",  eng.get("financial_year", ""))
+    _kv(doc, "Period",
+        f"{eng.get('period_from', '—')} to {eng.get('period_to', '—')}")
+    _kv(doc, "Status",          eng.get("status", ""))
+    if eng.get("notes"):
+        _kv(doc, "Notes", eng.get("notes", ""))
 
     doc.add_paragraph()
 
-    # ══════════════════════════════════════════════════════════
-    #  SECTION 2: AUDIT TEAM
-    # ══════════════════════════════════════════════════════════
-    _add_heading(doc, "2. Audit Team")
+    # ── SECTION 2: AUDIT TEAM ────────────────────────────────
+    _heading(doc, "2. Audit Team")
     if team:
-        tbl = doc.add_table(rows=1, cols=3)
-        tbl.style = 'Table Grid'
-        _add_table_header(tbl, ["Name", "Role", "Email"])
+        tbl2 = doc.add_table(rows=1, cols=3)
+        tbl2.style = 'Table Grid'
+        _tbl_header(tbl2, ["Name", "Role", "Email"])
         for m in team:
-            row = tbl.add_row()
-            row.cells[0].text = m.get("full_name","")
-            row.cells[1].text = m.get("role","")
-            row.cells[2].text = m.get("email","")
+            row_ = tbl2.add_row()
+            row_.cells[0].text = m.get("full_name", "")
+            row_.cells[1].text = m.get("role", "")
+            row_.cells[2].text = m.get("email", "")
     else:
         doc.add_paragraph("No team members assigned.")
 
     doc.add_page_break()
 
-    # ══════════════════════════════════════════════════════════
-    #  SECTION 3: TASK WORKING PAPERS
-    # ══════════════════════════════════════════════════════════
-    _add_heading(doc, "3. Task-wise Working Papers")
+    # ── SECTION 3: TASK WORKING PAPERS ──────────────────────
+    _heading(doc, "3. Task-wise Working Papers")
 
     # Group tasks by area
     areas = {}
@@ -162,103 +159,110 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
         areas.setdefault(area, []).append(t)
 
     for area, area_tasks in areas.items():
-        _add_heading(doc, area, level=2, color="1a4d80")
+        _heading(doc, area, level=2, color="1a4d80")
 
         for t in area_tasks:
             tid = t["id"]
 
-            # Task header
+            # Task title
             p = doc.add_paragraph()
-            r = p.add_run(f"  {t.get('title','')}")
-            r.bold = True
-            r.font.size = Pt(10)
-            r.font.color.rgb = RGBColor(0, 51, 102)
+            r_ = p.add_run(f"  {t.get('title', '')}")
+            r_.bold = True
+            r_.font.size = Pt(10)
+            r_.font.color.rgb = RGBColor(0, 51, 102)
 
-            # Task details table
-            tbl = doc.add_table(rows=1, cols=4)
-            tbl.style = 'Table Grid'
-            _add_table_header(tbl, ["Status", "Priority", "Due Date", "WP Ref"],
-                              bg="1a4d80", fg="DAA520")
-            row = tbl.add_row()
-            row.cells[0].text = t.get("status","")
-            row.cells[1].text = t.get("priority","")
-            row.cells[2].text = str(t.get("due_date","")) if t.get("due_date") else "—"
-            row.cells[3].text = t.get("working_paper_ref","") or "—"
+            # Task detail table
+            dtbl = doc.add_table(rows=1, cols=4)
+            dtbl.style = 'Table Grid'
+            _tbl_header(dtbl,
+                        ["Status", "Priority", "Due Date", "WP Ref"],
+                        bg="1a4d80", fg="DAA520")
+            drow = dtbl.add_row()
+            drow.cells[0].text = t.get("status", "")
+            drow.cells[1].text = t.get("priority", "")
+            drow.cells[2].text = str(t.get("due_date", "")) if t.get("due_date") else "—"
+            drow.cells[3].text = t.get("working_paper_ref", "") or "—"
 
             # Assignees
-            assignees = t.get("assignee_name","") or "Unassigned"
-            _add_kv(doc, "    Assigned To", assignees)
+            _kv(doc, "    Assigned To",
+                t.get("assignee_name", "") or "Unassigned")
 
-            # Description
             if t.get("description"):
-                _add_kv(doc, "    Description", t["description"])
+                _kv(doc, "    Description", t["description"])
 
             # Comments
             cmts = comments_by_task.get(tid, [])
             if cmts:
-                doc.add_paragraph("    Comments:", style=None).runs[0].bold = True
+                cp = doc.add_paragraph("    Comments:")
+                cp.runs[0].bold = True
                 for c in cmts:
-                    p = doc.add_paragraph(style=None)
-                    p.paragraph_format.left_indent = Cm(1)
-                    r1 = p.add_run(f"[{c.get('author_name','?')} — {c.get('created_at','')[:16]}]")
+                    p2 = doc.add_paragraph()
+                    p2.paragraph_format.left_indent = Cm(1)
+                    r1 = p2.add_run(
+                        f"[{c.get('author_name', '?')} — "
+                        f"{c.get('created_at', '')[:16]}]: "
+                    )
                     r1.bold = True
                     r1.font.size = Pt(9)
                     r1.font.color.rgb = RGBColor(80, 80, 80)
-                    p.add_run(f": {c.get('content','')}")
+                    p2.add_run(c.get("content", ""))
 
             # Reviews
             revs = reviews_by_task.get(tid, [])
             if revs:
-                doc.add_paragraph("    Reviews:", style=None).runs[0].bold = True
+                rp = doc.add_paragraph("    Reviews:")
+                rp.runs[0].bold = True
                 for rv in revs:
-                    p = doc.add_paragraph(style=None)
-                    p.paragraph_format.left_indent = Cm(1)
-                    action = rv.get("action","")
-                    color = RGBColor(30, 126, 68) if action == "Approved" else RGBColor(197, 48, 48)
-                    r1 = p.add_run(f"[{action}] ")
+                    p3 = doc.add_paragraph()
+                    p3.paragraph_format.left_indent = Cm(1)
+                    action = rv.get("action", "")
+                    color = (RGBColor(30, 126, 68)
+                             if action == "Approved"
+                             else RGBColor(197, 48, 48))
+                    r1 = p3.add_run(f"[{action}] ")
                     r1.bold = True
                     r1.font.color.rgb = color
                     r1.font.size = Pt(9)
-                    p.add_run(f"{rv.get('reviewer_name','')} — {rv.get('reviewed_at','')[:16]}")
+                    p3.add_run(
+                        f"{rv.get('reviewer_name', '')} — "
+                        f"{rv.get('reviewed_at', '')[:16]}"
+                    )
                     if rv.get("remarks"):
-                        p.add_run(f" — {rv['remarks']}")
+                        p3.add_run(f" — {rv['remarks']}")
 
             doc.add_paragraph()
 
     doc.add_page_break()
 
-    # ══════════════════════════════════════════════════════════
-    #  SECTION 4: QUERY SHEET
-    # ══════════════════════════════════════════════════════════
-    _add_heading(doc, "4. Query Sheet")
+    # ── SECTION 4: QUERY SHEET ───────────────────────────────
+    _heading(doc, "4. Query Sheet")
     if queries:
-        tbl = doc.add_table(rows=1, cols=6)
-        tbl.style = 'Table Grid'
-        _add_table_header(tbl,
-            ["Sr.", "Query", "Response", "Status", "Raised By", "Date"])
+        qtbl = doc.add_table(rows=1, cols=6)
+        qtbl.style = 'Table Grid'
+        _tbl_header(qtbl,
+                    ["Sr.", "Query", "Response",
+                     "Status", "Raised By", "Date"])
         for q in queries:
-            row = tbl.add_row()
-            row.cells[0].text = str(q.get("sr_no",""))
-            row.cells[1].text = q.get("query_text","")
-            row.cells[2].text = q.get("response","") or "Pending"
-            row.cells[3].text = q.get("status","")
-            row.cells[4].text = q.get("raised_by_name","")
-            row.cells[5].text = str(q.get("raised_date",""))[:10] if q.get("raised_date") else ""
+            qrow = qtbl.add_row()
+            qrow.cells[0].text = str(q.get("sr_no") or "")
+            qrow.cells[1].text = str(q.get("query_text") or "")
+            qrow.cells[2].text = str(q.get("response") or "Pending")
+            qrow.cells[3].text = str(q.get("status") or "")
+            qrow.cells[4].text = str(q.get("raised_by_name") or "")
+            qrow.cells[5].text = str(q.get("raised_date") or "")[:10]
     else:
         doc.add_paragraph("No queries raised for this engagement.")
 
-    # ══════════════════════════════════════════════════════════
-    #  FOOTER NOTE
-    # ══════════════════════════════════════════════════════════
+    # ── FOOTER ──────────────────────────────────────────────
     doc.add_page_break()
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = p.add_run(
+    fp = doc.add_paragraph()
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    fr = fp.add_run(
         f"Generated by CA FirmHub"
         + (f" | {firm_name}" if firm_name else "")
         + f" | {datetime.now().strftime('%d-%m-%Y %H:%M')}"
     )
-    r.font.size = Pt(9)
-    r.font.color.rgb = RGBColor(150, 150, 150)
+    fr.font.size = Pt(9)
+    fr.font.color.rgb = RGBColor(150, 150, 150)
 
     doc.save(filepath)
