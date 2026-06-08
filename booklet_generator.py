@@ -42,7 +42,9 @@ def _kv(doc, label, value):
     r2.font.size = Pt(10)
 
 
-def _tbl_header(table, headers, bg="003366", fg="DAA520"):
+def _cell_text(cell, value):
+    """Safely set cell text — always converts to string."""
+    cell.text = str(value) if value is not None else "—"
     row = table.rows[0]
     for cell, header in zip(row.cells, headers):
         cell.text = header
