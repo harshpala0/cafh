@@ -38,16 +38,15 @@ def _kv(doc, label, value):
     r1 = p.add_run(f"{label}: ")
     r1.bold = True
     r1.font.size = Pt(10)
-    r2 = p.add_run(str(value) if value else "—")
+    r2 = p.add_run(str(value) if value is not None else "—")
     r2.font.size = Pt(10)
 
 
-def _cell_text(cell, value):
-    """Safely set cell text — always converts to string."""
-    cell.text = str(value) if value is not None else "—"
+def _tbl_header(table, headers, bg="003366", fg="FFFFFF"):
+    """Apply bold coloured header row to a table."""
     row = table.rows[0]
     for cell, header in zip(row.cells, headers):
-        cell.text = header
+        cell.text = str(header)
         _set_cell_bg(cell, bg)
         for para in cell.paragraphs:
             para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -59,6 +58,11 @@ def _cell_text(cell, value):
                     int(fg[2:4], 16),
                     int(fg[4:6], 16)
                 )
+
+
+def _safe_cell(cell, value):
+    """Safely set cell text — always converts to string."""
+    cell.text = str(value) if value is not None else "—"
 
 
 def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
@@ -85,7 +89,7 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
     doc.add_paragraph()
     sub = doc.add_paragraph()
     sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = sub.add_run(eng.get("client_name") or "")
+    r = sub.add_run(str(eng.get("client_name") or ""))
     r.bold = True
     r.font.size = Pt(16)
 
@@ -104,11 +108,11 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
     tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     tbl.style = 'Table Grid'
     tbl.rows[0].cells[0].text = "Prepared by"
-    tbl.rows[0].cells[1].text = firm_name or "CA Firm"
+    tbl.rows[0].cells[1].text = str(firm_name) if firm_name else "CA Firm"
     if firm_reg_no:
         r_ = tbl.add_row()
         r_.cells[0].text = "Firm Reg. No."
-        r_.cells[1].text = firm_reg_no
+        r_.cells[1].text = str(firm_reg_no)
     r2_ = tbl.add_row()
     r2_.cells[0].text = "Generated on"
     r2_.cells[1].text = datetime.now().strftime("%d %B %Y, %I:%M %p")
@@ -143,9 +147,9 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
         _tbl_header(tbl2, ["Name", "Role", "Email"])
         for m in team:
             row_ = tbl2.add_row()
-            row_.cells[0].text = m.get("full_name", "")
-            row_.cells[1].text = m.get("role", "")
-            row_.cells[2].text = m.get("email", "")
+            _safe_cell(row_.cells[0], m.get("full_name", ""))
+            _safe_cell(row_.cells[1], m.get("role", ""))
+            _safe_cell(row_.cells[2], m.get("email", ""))
     else:
         doc.add_paragraph("No team members assigned.")
 
@@ -180,10 +184,10 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                         ["Status", "Priority", "Due Date", "WP Ref"],
                         bg="1a4d80", fg="DAA520")
             drow = dtbl.add_row()
-            drow.cells[0].text = t.get("status", "")
-            drow.cells[1].text = t.get("priority", "")
-            drow.cells[2].text = str(t.get("due_date", "")) if t.get("due_date") else "—"
-            drow.cells[3].text = t.get("working_paper_ref", "") or "—"
+            _safe_cell(drow.cells[0], t.get("status", ""))
+            _safe_cell(drow.cells[1], t.get("priority", ""))
+            _safe_cell(drow.cells[2], t.get("due_date") or "—")
+            _safe_cell(drow.cells[3], t.get("working_paper_ref") or "—")
 
             # Assignees
             _kv(doc, "    Assigned To",
@@ -202,12 +206,12 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                     p2.paragraph_format.left_indent = Cm(1)
                     r1 = p2.add_run(
                         f"[{c.get('author_name', '?')} — "
-                        f"{c.get('created_at', '')[:16]}]: "
+                        f"{str(c.get('created_at', ''))[:16]}]: "
                     )
                     r1.bold = True
                     r1.font.size = Pt(9)
                     r1.font.color.rgb = RGBColor(80, 80, 80)
-                    p2.add_run(c.get("content", ""))
+                    p2.add_run(str(c.get("content", "")))
 
             # Reviews
             revs = reviews_by_task.get(tid, [])
@@ -217,7 +221,7 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                 for rv in revs:
                     p3 = doc.add_paragraph()
                     p3.paragraph_format.left_indent = Cm(1)
-                    action = rv.get("action", "")
+                    action = str(rv.get("action", ""))
                     color = (RGBColor(30, 126, 68)
                              if action == "Approved"
                              else RGBColor(197, 48, 48))
@@ -227,7 +231,7 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                     r1.font.size = Pt(9)
                     p3.add_run(
                         f"{rv.get('reviewer_name', '')} — "
-                        f"{rv.get('reviewed_at', '')[:16]}"
+                        f"{str(rv.get('reviewed_at', ''))[:16]}"
                     )
                     if rv.get("remarks"):
                         p3.add_run(f" — {rv['remarks']}")
@@ -246,12 +250,12 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                      "Status", "Raised By", "Date"])
         for q in queries:
             qrow = qtbl.add_row()
-            qrow.cells[0].text = str(q.get("sr_no") or "")
-            qrow.cells[1].text = str(q.get("query_text") or "")
-            qrow.cells[2].text = str(q.get("response") or "Pending")
-            qrow.cells[3].text = str(q.get("status") or "")
-            qrow.cells[4].text = str(q.get("raised_by_name") or "")
-            qrow.cells[5].text = str(q.get("raised_date") or "")[:10]
+            _safe_cell(qrow.cells[0], q.get("sr_no") or "")
+            _safe_cell(qrow.cells[1], q.get("query_text") or "")
+            _safe_cell(qrow.cells[2], q.get("response") or "Pending")
+            _safe_cell(qrow.cells[3], q.get("status") or "")
+            _safe_cell(qrow.cells[4], q.get("raised_by_name") or "")
+            _safe_cell(qrow.cells[5], str(q.get("raised_date") or "")[:10])
     else:
         doc.add_paragraph("No queries raised for this engagement.")
 
