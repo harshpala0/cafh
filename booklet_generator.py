@@ -67,7 +67,8 @@ def _safe_cell(cell, value):
 
 def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                      queries, team, filepath,
-                     firm_name="", firm_reg_no=""):
+                     firm_name="", firm_reg_no="",
+                     audit_programs=None):
     doc = Document()
 
     # Page margins
@@ -236,6 +237,40 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                     if rv.get("remarks"):
                         p3.add_run(f" — {rv['remarks']}")
 
+            doc.add_paragraph()
+
+    # ── SECTION 3b: AUDIT PROGRAM ───────────────────────────
+    if audit_programs:
+        _heading(doc, "Audit Program Checklist", level=2, color="1a4d80")
+
+        # Group by area preserving Planning→other→Completion order
+        _AP_ORDER = {}
+        _ap_area_list = []
+        for ap in audit_programs:
+            a = ap["area"]
+            if a not in _AP_ORDER:
+                _AP_ORDER[a] = a
+                _ap_area_list.append(a)
+
+        ap_by_area = {}
+        for ap in audit_programs:
+            ap_by_area.setdefault(ap["area"], []).append(ap)
+
+        for area in _ap_area_list:
+            _heading(doc, area, level=3, color="2e6da4")
+            ap_tbl = doc.add_table(rows=1, cols=5)
+            ap_tbl.style = 'Table Grid'
+            _tbl_header(ap_tbl,
+                        ["Sr.", "Procedure / Description",
+                         "Reference", "Priority", "Remarks"],
+                        bg="2e6da4", fg="FFFFFF")
+            for item in ap_by_area[area]:
+                row_ = ap_tbl.add_row()
+                _safe_cell(row_.cells[0], item.get("sr_no", ""))
+                _safe_cell(row_.cells[1], item.get("description", ""))
+                _safe_cell(row_.cells[2], item.get("reference", "") or "—")
+                _safe_cell(row_.cells[3], item.get("priority", "") or "—")
+                row_.cells[4].text = ""   # blank Remarks column for manual use
             doc.add_paragraph()
 
     doc.add_page_break()
