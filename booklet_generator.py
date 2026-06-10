@@ -239,24 +239,21 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
 
             doc.add_paragraph()
 
-    # ── SECTION 3b: AUDIT PROGRAM ───────────────────────────
+    # ── SECTION 3b: AUDIT PROGRAM CHECKLIST ─────────────────
     if audit_programs:
         _heading(doc, "Audit Program Checklist", level=2, color="1a4d80")
 
-        # Group by area preserving Planning→other→Completion order
-        _AP_ORDER = {}
-        _ap_area_list = []
-        for ap in audit_programs:
-            a = ap["area"]
-            if a not in _AP_ORDER:
-                _AP_ORDER[a] = a
-                _ap_area_list.append(a)
-
+        # Preserve DB order (Planning→other→Completion already sorted by SQL)
+        ap_area_list = []
         ap_by_area = {}
         for ap in audit_programs:
-            ap_by_area.setdefault(ap["area"], []).append(ap)
+            a = ap["area"]
+            if a not in ap_by_area:
+                ap_area_list.append(a)
+                ap_by_area[a] = []
+            ap_by_area[a].append(ap)
 
-        for area in _ap_area_list:
+        for area in ap_area_list:
             _heading(doc, area, level=3, color="2e6da4")
             ap_tbl = doc.add_table(rows=1, cols=5)
             ap_tbl.style = 'Table Grid'
@@ -270,7 +267,7 @@ def generate_booklet(eng, tasks, comments_by_task, reviews_by_task,
                 _safe_cell(row_.cells[1], item.get("description", ""))
                 _safe_cell(row_.cells[2], item.get("reference", "") or "—")
                 _safe_cell(row_.cells[3], item.get("priority", "") or "—")
-                row_.cells[4].text = ""   # blank Remarks column for manual use
+                row_.cells[4].text = ""
             doc.add_paragraph()
 
     doc.add_page_break()
