@@ -1423,7 +1423,6 @@ def report_overview():
     })
 # ═══════════════════════════════════════════════════════════════
 #  AUDIT BOOKLET GENERATOR
-#  Add this block to main.py BEFORE the /api/health route
 # ═══════════════════════════════════════════════════════════════
 
 @app.route("/api/booklet/generate/<int:eid>")
@@ -1434,8 +1433,6 @@ def gen_booklet(eid):
         from booklet_generator import generate_booklet
     except ImportError:
         return jsonify({"detail": "python-docx not installed or booklet_generator.py missing"}), 500
-
-    db_conn = get_db()
 
     # Engagement + client details
     eng = qry("""SELECT e.*, c.name as client_name, c.pan, c.gstin
@@ -1452,25 +1449,24 @@ def gen_booklet(eid):
         tl = qry("SELECT * FROM users WHERE id=%s", (eng["team_leader_id"],), one=True)
         if tl:
             team.append({"full_name": tl["full_name"], "role": "Team Leader",
-                         "email": tl.get("email","")})
+                         "email": tl.get("email", "")})
             seen_ids.add(tl["id"])
 
     for m in qry("""SELECT u.* FROM engagement_teams et
                     JOIN users u ON et.user_id=u.id
                     WHERE et.engagement_id=%s""", (eid,)):
         if m["id"] not in seen_ids:
-            team.append({"full_name": m["full_name"], "role": m.get("role","Member"),
-                         "email": m.get("email","")})
+            team.append({"full_name": m["full_name"], "role": m.get("role", "Member"),
+                         "email": m.get("email", "")})
             seen_ids.add(m["id"])
 
-    # Task assignees
     for m in qry("""SELECT DISTINCT u.* FROM task_assignees ta
                     JOIN tasks t ON ta.task_id=t.id
                     JOIN users u ON ta.user_id=u.id
                     WHERE t.engagement_id=%s""", (eid,)):
         if m["id"] not in seen_ids:
-            team.append({"full_name": m["full_name"], "role": m.get("role","Audit Member"),
-                         "email": m.get("email","")})
+            team.append({"full_name": m["full_name"], "role": m.get("role", "Audit Member"),
+                         "email": m.get("email", "")})
             seen_ids.add(m["id"])
 
     # Tasks
@@ -1487,7 +1483,6 @@ def gen_booklet(eid):
                            WHERE ta.task_id IN ({ph})
                            ORDER BY u.full_name""", tids):
             task_assignee_names.setdefault(row["task_id"], []).append(row["full_name"])
-        # Fallback to legacy assignee_id
         for t in tasks_raw:
             if t["id"] not in task_assignee_names and t.get("assignee_id"):
                 u = qry("SELECT full_name FROM users WHERE id=%s",
@@ -1498,12 +1493,12 @@ def gen_booklet(eid):
     tasks = [{
         "id":                t["id"],
         "title":             t["title"],
-        "area":              t.get("area",""),
+        "area":              t.get("area", ""),
         "status":            t["status"],
-        "priority":          t.get("priority",""),
+        "priority":          t.get("priority", ""),
         "due_date":          str(t["due_date"]) if t.get("due_date") else "",
-        "working_paper_ref": t.get("working_paper_ref",""),
-        "description":       t.get("description",""),
+        "working_paper_ref": t.get("working_paper_ref", ""),
+        "description":       t.get("description", ""),
         "assignee_name":     ", ".join(task_assignee_names.get(t["id"], [])) or "Unassigned"
     } for t in tasks_raw]
 
@@ -1535,7 +1530,7 @@ def gen_booklet(eid):
             rbt.setdefault(r["task_id"], []).append({
                 "reviewer_name": r["reviewer_name"],
                 "action":        r["action"],
-                "remarks":       r.get("remarks",""),
+                "remarks":       r.get("remarks", ""),
                 "reviewed_at":   str(r["reviewed_at"])[:16] if r.get("reviewed_at") else ""
             })
 
@@ -1545,27 +1540,22 @@ def gen_booklet(eid):
                      WHERE q.engagement_id=%s AND q.firm_id=%s
                      ORDER BY q.sr_no""", (eid, g.firm_id))
 
-# ── PATCH 1 of 2: Add this query AFTER the `queries` query and BEFORE the temp-file block ──
-# Find this line in gen_booklet:
-#   queries = qry("""SELECT q.*, ...""", (eid, g.firm_id))
-# Add the block below immediately after it:
-
-    # Audit Programs — ordered: Planning first, Completion last, others by sr_no
-    audit_programs = qry("""
+    # Audit program checklist items — Planning first, Completion last, others by sr_no
+    audit_programs_raw = qry("""
         SELECT ap.sr_no, ap.area, ap.description, ap.reference, ap.priority,
                ap.program_id
-        FROM audit_program_items ap
+        FROM audit_checklist_items ap
         JOIN audit_programs prog ON ap.program_id = prog.id
-        WHERE prog.engagement_id = %s AND prog.firm_id = %s
+        WHERE prog.firm_id = %s
         ORDER BY
             CASE
-                WHEN LOWER(ap.area) LIKE 'planning%%'    THEN 1
-                WHEN LOWER(ap.area) LIKE 'completion%%'  THEN 3
+                WHEN LOWER(ap.area) LIKE 'planning%%'   THEN 1
+                WHEN LOWER(ap.area) LIKE 'completion%%' THEN 3
                 ELSE 2
             END,
             ap.program_id,
             ap.sr_no
-    """, (eid, g.firm_id))
+    """, (g.firm_id,))
 
     audit_programs_list = [{
         "sr_no":       row["sr_no"],
@@ -1574,90 +1564,48 @@ def gen_booklet(eid):
         "reference":   row.get("reference", "") or "",
         "priority":    row.get("priority", "") or "",
         "program_id":  row["program_id"],
-    } for row in audit_programs]
+    } for row in audit_programs_raw]
 
+    # Get firm details
+    firm = qry("SELECT * FROM firms WHERE id=%s", (g.firm_id,), one=True)
+    firm_name_str = firm["name"] if firm else ""
+    firm_reg_no   = firm.get("reg_no", "") if firm else ""
 
-# ── PATCH 2 of 2: Pass audit_programs_list into BOTH generate_booklet calls ──
-# In the route you currently have two generate_booklet(...) calls.
-# In BOTH calls, add audit_programs=audit_programs_list as a keyword argument.
-# Example (apply to both calls):
+    # Build queries list once
+    queries_list = [{
+        "sr_no":          q["sr_no"],
+        "query_text":     q["query_text"],
+        "response":       q.get("response", ""),
+        "status":         q["status"],
+        "raised_by_name": q.get("raised_by_name", ""),
+        "raised_date":    str(q.get("raised_date", ""))
+    } for q in queries]
 
-    generate_booklet(
-        eng, tasks, cbt, rbt,
-        [{
-            "sr_no":          q["sr_no"],
-            "query_text":     q["query_text"],
-            "response":       q.get("response", ""),
-            "status":         q["status"],
-            "raised_by_name": q.get("raised_by_name", ""),
-            "raised_date":    str(q.get("raised_date", ""))
-        } for q in queries],
-        team, fp,                          # <-- fp or fp2 depending on which call
-        firm_name=firm_name_str,           # <-- use correct firm_name for each call
-        firm_reg_no=firm.get("reg_no", "") if firm else "",
-        audit_programs=audit_programs_list  # ← ADD THIS LINE to both calls
-    )
-  
-    # Generate file in temp directory
+    # Generate booklet to temp file
     tmp = tempfile.NamedTemporaryFile(
         suffix=".docx", delete=False,
         dir=os.path.join(os.path.dirname(__file__), "static"))
     tmp.close()
     fp = tmp.name
 
-generate_booklet(
-    eng, tasks, cbt, rbt,
-    [{
-        "sr_no":          q["sr_no"],
-        "query_text":     q["query_text"],
-        "response":       q.get("response", ""),
-        "status":         q["status"],
-        "raised_by_name": q.get("raised_by_name", ""),
-        "raised_date":    str(q.get("raised_date", ""))
-    } for q in queries],
-    team, fp,
-    firm_name=g.user.get("firm_id", ""),
-    firm_reg_no="",
-    audit_programs=audit_programs_list
-)
-
-    # Get firm name for booklet footer
-    firm = qry("SELECT * FROM firms WHERE id=%s", (g.firm_id,), one=True)
-    firm_name_str = firm["name"] if firm else ""
-
-    # Regenerate with correct firm name
-    os.unlink(fp)
-    tmp2 = tempfile.NamedTemporaryFile(
-        suffix=".docx", delete=False,
-        dir=os.path.join(os.path.dirname(__file__), "static"))
-    tmp2.close()
-    fp2 = tmp2.name
-
     generate_booklet(
-    eng, tasks, cbt, rbt,
-    [{
-        "sr_no":          q["sr_no"],
-        "query_text":     q["query_text"],
-        "response":       q.get("response", ""),
-        "status":         q["status"],
-        "raised_by_name": q.get("raised_by_name", ""),
-        "raised_date":    str(q.get("raised_date", ""))
-    } for q in queries],
-    team, fp2,
-    firm_name=firm_name_str,
-    firm_reg_no=firm.get("reg_no", "") if firm else "",
-    audit_programs=audit_programs_list
-)
+        eng, tasks, cbt, rbt,
+        queries_list,
+        team, fp,
+        firm_name=firm_name_str,
+        firm_reg_no=firm_reg_no,
+        audit_programs=audit_programs_list
+    )
 
     log_action(g.firm_id, g.user["id"], "GENERATE_BOOKLET", "Engagement", eid,
                f"Generated booklet for engagement #{eid}")
 
     client_name = (eng.get("client_name") or "Engagement").replace(" ", "_")
-    fy = eng.get("financial_year","").replace("-","_")
+    fy = eng.get("financial_year", "").replace("-", "_")
     download_name = f"Audit_Booklet_{client_name}_{fy}.docx"
 
     return send_file(
-        fp2,
+        fp,
         as_attachment=True,
         download_name=download_name,
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
