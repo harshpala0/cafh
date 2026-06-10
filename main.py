@@ -1545,6 +1545,59 @@ def gen_booklet(eid):
                      WHERE q.engagement_id=%s AND q.firm_id=%s
                      ORDER BY q.sr_no""", (eid, g.firm_id))
 
+# ── PATCH 1 of 2: Add this query AFTER the `queries` query and BEFORE the temp-file block ──
+# Find this line in gen_booklet:
+#   queries = qry("""SELECT q.*, ...""", (eid, g.firm_id))
+# Add the block below immediately after it:
+
+    # Audit Programs — ordered: Planning first, Completion last, others by sr_no
+    audit_programs = qry("""
+        SELECT ap.sr_no, ap.area, ap.description, ap.reference, ap.priority,
+               ap.program_id
+        FROM audit_program_items ap
+        JOIN audit_programs prog ON ap.program_id = prog.id
+        WHERE prog.engagement_id = %s AND prog.firm_id = %s
+        ORDER BY
+            CASE
+                WHEN LOWER(ap.area) LIKE 'planning%%'    THEN 1
+                WHEN LOWER(ap.area) LIKE 'completion%%'  THEN 3
+                ELSE 2
+            END,
+            ap.program_id,
+            ap.sr_no
+    """, (eid, g.firm_id))
+
+    audit_programs_list = [{
+        "sr_no":       row["sr_no"],
+        "area":        row["area"],
+        "description": row["description"],
+        "reference":   row.get("reference", "") or "",
+        "priority":    row.get("priority", "") or "",
+        "program_id":  row["program_id"],
+    } for row in audit_programs]
+
+
+# ── PATCH 2 of 2: Pass audit_programs_list into BOTH generate_booklet calls ──
+# In the route you currently have two generate_booklet(...) calls.
+# In BOTH calls, add audit_programs=audit_programs_list as a keyword argument.
+# Example (apply to both calls):
+
+    generate_booklet(
+        eng, tasks, cbt, rbt,
+        [{
+            "sr_no":          q["sr_no"],
+            "query_text":     q["query_text"],
+            "response":       q.get("response", ""),
+            "status":         q["status"],
+            "raised_by_name": q.get("raised_by_name", ""),
+            "raised_date":    str(q.get("raised_date", ""))
+        } for q in queries],
+        team, fp,                          # <-- fp or fp2 depending on which call
+        firm_name=firm_name_str,           # <-- use correct firm_name for each call
+        firm_reg_no=firm.get("reg_no", "") if firm else "",
+        audit_programs=audit_programs_list  # ← ADD THIS LINE to both calls
+    )
+  
     # Generate file in temp directory
     tmp = tempfile.NamedTemporaryFile(
         suffix=".docx", delete=False,
@@ -1552,20 +1605,21 @@ def gen_booklet(eid):
     tmp.close()
     fp = tmp.name
 
-    generate_booklet(
-        eng, tasks, cbt, rbt,
-        [{
-            "sr_no":         q["sr_no"],
-            "query_text":    q["query_text"],
-            "response":      q.get("response",""),
-            "status":        q["status"],
-            "raised_by_name":q.get("raised_by_name",""),
-            "raised_date":   str(q.get("raised_date",""))
-        } for q in queries],
-        team, fp,
-        firm_name=g.user.get("firm_id",""),  # will be resolved below
-        firm_reg_no=""
-    )
+generate_booklet(
+    eng, tasks, cbt, rbt,
+    [{
+        "sr_no":          q["sr_no"],
+        "query_text":     q["query_text"],
+        "response":       q.get("response", ""),
+        "status":         q["status"],
+        "raised_by_name": q.get("raised_by_name", ""),
+        "raised_date":    str(q.get("raised_date", ""))
+    } for q in queries],
+    team, fp,
+    firm_name=g.user.get("firm_id", ""),
+    firm_reg_no="",
+    audit_programs=audit_programs_list
+)
 
     # Get firm name for booklet footer
     firm = qry("SELECT * FROM firms WHERE id=%s", (g.firm_id,), one=True)
@@ -1580,19 +1634,20 @@ def gen_booklet(eid):
     fp2 = tmp2.name
 
     generate_booklet(
-        eng, tasks, cbt, rbt,
-        [{
-            "sr_no":         q["sr_no"],
-            "query_text":    q["query_text"],
-            "response":      q.get("response",""),
-            "status":        q["status"],
-            "raised_by_name":q.get("raised_by_name",""),
-            "raised_date":   str(q.get("raised_date",""))
-        } for q in queries],
-        team, fp2,
-        firm_name=firm_name_str,
-        firm_reg_no=firm.get("reg_no","") if firm else ""
-    )
+    eng, tasks, cbt, rbt,
+    [{
+        "sr_no":          q["sr_no"],
+        "query_text":     q["query_text"],
+        "response":       q.get("response", ""),
+        "status":         q["status"],
+        "raised_by_name": q.get("raised_by_name", ""),
+        "raised_date":    str(q.get("raised_date", ""))
+    } for q in queries],
+    team, fp2,
+    firm_name=firm_name_str,
+    firm_reg_no=firm.get("reg_no", "") if firm else "",
+    audit_programs=audit_programs_list
+)
 
     log_action(g.firm_id, g.user["id"], "GENERATE_BOOKLET", "Engagement", eid,
                f"Generated booklet for engagement #{eid}")
