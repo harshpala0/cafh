@@ -1006,6 +1006,109 @@ def delete_query(qid):
     return jsonify({"message":"Deleted"})
 
 # ═══════════════════════════════════════════════════════════════
+#  QUERY SHEET EXCEL EXPORT
+#  Place this immediately AFTER the /api/queries/<qid> DELETE route
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/queries/export/<int:eid>")
+@login_required
+def export_queries(eid):
+    import io, tempfile, os
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        return jsonify({"detail": "openpyxl not installed"}), 500
+
+    eng = qry("""SELECT e.*, c.name as client_name
+                 FROM engagements e JOIN clients c ON e.client_id=c.id
+                 WHERE e.id=%s AND e.firm_id=%s""",
+              (eid, g.firm_id), one=True)
+    if not eng:
+        return jsonify({"detail": "Engagement not found"}), 404
+
+    queries = qry("""SELECT q.*, u.full_name as raised_by_name
+                     FROM queries q LEFT JOIN users u ON q.raised_by_id=u.id
+                     WHERE q.engagement_id=%s AND q.firm_id=%s
+                     ORDER BY q.sr_no""", (eid, g.firm_id))
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Query Sheet"
+
+    navy    = "003366"
+    gold    = "DAA520"
+    light   = "EBF4FF"
+    thin    = Side(style="thin", color="D1DAEA")
+    bdr     = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # ── Title row ──────────────────────────────────────────────
+    ws.merge_cells("A1:G1")
+    t = ws.cell(row=1, column=1,
+                value=f"Query Sheet — {eng.get('client_name','')} | {eng.get('title','')} | FY {eng.get('financial_year','')}")
+    t.font      = Font(name="Arial", bold=True, size=13, color="FFFFFF")
+    t.fill      = PatternFill("solid", fgColor=navy)
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 22
+
+    # ── Header row ─────────────────────────────────────────────
+    headers = ["Sr. No.", "Query", "Response", "Status", "Raised By", "Date", "Task Reference"]
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=2, column=col, value=h)
+        c.font      = Font(name="Arial", bold=True, size=10, color="FFFFFF")
+        c.fill      = PatternFill("solid", fgColor="1a4d80")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border    = bdr
+    ws.row_dimensions[2].height = 18
+
+    # ── Data rows ──────────────────────────────────────────────
+    for i, q in enumerate(queries):
+        row = i + 3
+        vals = [
+            q.get("sr_no", ""),
+            q.get("query_text", "") or "",
+            q.get("response", "") or "Pending",
+            q.get("status", "") or "",
+            q.get("raised_by_name", "") or "",
+            str(q.get("raised_date", "") or "")[:10],
+            q.get("task_reference", "") or "",
+        ]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=str(val) if val is not None else "")
+            c.font      = Font(name="Arial", size=10)
+            c.fill      = PatternFill("solid", fgColor=light if i % 2 == 0 else "FFFFFF")
+            c.alignment = Alignment(vertical="top", wrap_text=True)
+            c.border    = bdr
+        ws.row_dimensions[row].height = 40
+
+    # ── Column widths ──────────────────────────────────────────
+    ws.column_dimensions["A"].width = 8
+    ws.column_dimensions["B"].width = 48
+    ws.column_dimensions["C"].width = 48
+    ws.column_dimensions["D"].width = 14
+    ws.column_dimensions["E"].width = 20
+    ws.column_dimensions["F"].width = 14
+    ws.column_dimensions["G"].width = 30
+
+    # ── Save to temp file and serve ────────────────────────────
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".xlsx", delete=False,
+        dir=os.path.join(os.path.dirname(__file__), "static"))
+    tmp.close()
+    wb.save(tmp.name)
+
+    client_name = (eng.get("client_name") or "Client").replace(" ", "_")
+    fy = (eng.get("financial_year") or "").replace("-", "_")
+    download_name = f"Query_Sheet_{client_name}_{fy}.xlsx"
+
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+  
+# ═══════════════════════════════════════════════════════════════
 #  AUDIT PROGRAMS
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/programs/")
