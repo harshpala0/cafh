@@ -1715,6 +1715,198 @@ def gen_booklet(eid):
     )
 
 # ═══════════════════════════════════════════════════════════════
+#  AUDIT DAY LOGS
+# ═══════════════════════════════════════════════════════════════
+
+def _day_log_full(log):
+    """Attach items to a day log dict."""
+    log["items"] = qry(
+        "SELECT * FROM audit_day_log_items WHERE log_id=%s ORDER BY item_type, sort_order",
+        (log["id"],)
+    )
+    log["work"]        = [i for i in log["items"] if i["item_type"] == "work"]
+    log["sampling"]    = [i for i in log["items"] if i["item_type"] == "sampling"]
+    log["observations"]= [i for i in log["items"] if i["item_type"] == "observation"]
+    log["pending"]     = [i for i in log["items"] if i["item_type"] == "pending"]
+    return log
+
+
+@app.route("/api/day-logs/")
+@login_required
+def list_day_logs():
+    eid = request.args.get("engagement_id")
+    if not eid:
+        return jsonify({"detail": "engagement_id required"}), 400
+    logs = qry(
+        "SELECT * FROM audit_day_logs WHERE engagement_id=%s AND firm_id=%s ORDER BY log_date DESC",
+        (eid, g.firm_id)
+    )
+    return jsonify(logs)
+
+
+@app.route("/api/day-logs/<int:lid>")
+@login_required
+def get_day_log(lid):
+    log = qry("SELECT * FROM audit_day_logs WHERE id=%s AND firm_id=%s",
+              (lid, g.firm_id), one=True)
+    if not log:
+        return jsonify({"detail": "Not found"}), 404
+    return jsonify(_day_log_full(log))
+
+
+@app.route("/api/day-logs/", methods=["POST"])
+@login_required
+def save_day_log():
+    d = request.get_json()
+    eid       = d.get("engagement_id")
+    log_date  = d.get("log_date")
+    if not eid or not log_date:
+        return jsonify({"detail": "engagement_id and log_date required"}), 400
+
+    # Check engagement belongs to firm
+    eng = qry("SELECT * FROM engagements WHERE id=%s AND firm_id=%s",
+              (eid, g.firm_id), one=True)
+    if not eng:
+        return jsonify({"detail": "Engagement not found"}), 404
+
+    # Check if log already exists for this date (upsert)
+    existing = qry(
+        "SELECT * FROM audit_day_logs WHERE engagement_id=%s AND firm_id=%s AND log_date=%s",
+        (eid, g.firm_id, log_date), one=True
+    )
+    if existing and existing.get("is_locked"):
+        return jsonify({"detail": "This log has been confirmed by client and is locked."}), 403
+
+    if existing:
+        lid = existing["id"]
+        execute(
+            "UPDATE audit_day_logs SET auditor_name=%s, next_day_plan=%s, updated_at=NOW() WHERE id=%s",
+            (d.get("auditor_name", ""), d.get("next_day_plan", ""), lid)
+        )
+        execute("DELETE FROM audit_day_log_items WHERE log_id=%s", (lid,))
+    else:
+        lid = qry_id(
+            "INSERT INTO audit_day_logs (firm_id, engagement_id, log_date, auditor_name, "
+            "next_day_plan, created_by_id) VALUES (%s,%s,%s,%s,%s,%s)",
+            (g.firm_id, eid, log_date, d.get("auditor_name", ""),
+             d.get("next_day_plan", ""), g.user["id"])
+        )
+
+    # Insert items
+    for idx, w in enumerate(d.get("work", [])):
+        if w.get("area"):
+            execute(
+                "INSERT INTO audit_day_log_items (log_id,item_type,area,summary,staff,sort_order) "
+                "VALUES (%s,'work',%s,%s,%s,%s)",
+                (lid, w.get("area",""), w.get("summary",""),
+                 ",".join(w.get("staff", [])), idx)
+            )
+
+    for idx, s in enumerate(d.get("sampling", [])):
+        if s.get("area"):
+            execute(
+                "INSERT INTO audit_day_log_items "
+                "(log_id,item_type,area,population,sample_size,materiality,filter_used,sort_order) "
+                "VALUES (%s,'sampling',%s,%s,%s,%s,%s,%s)",
+                (lid, s.get("area",""), s.get("population",""), s.get("sample_size",""),
+                 s.get("materiality",""), s.get("filter_used",""), idx)
+            )
+
+    for idx, o in enumerate(d.get("observations", [])):
+        if o.get("party") or o.get("query_text"):
+            execute(
+                "INSERT INTO audit_day_log_items "
+                "(log_id,item_type,party,ref_no,amount,query_text,observation,mgmt_response,status,sort_order) "
+                "VALUES (%s,'observation',%s,%s,%s,%s,%s,%s,%s,%s)",
+                (lid, o.get("party",""), o.get("ref_no",""), o.get("amount",""),
+                 o.get("query_text",""), o.get("observation",""),
+                 o.get("mgmt_response",""), o.get("status","Open"), idx)
+            )
+            # Auto-create query in query sheet if status is Open
+            if o.get("query_text") and o.get("status","Open") == "Open":
+                max_sr = qry(
+                    "SELECT COALESCE(MAX(sr_no),0) as m FROM queries WHERE engagement_id=%s",
+                    (eid,), one=True
+                )["m"]
+                # Avoid duplicates — check if same query text already exists
+                exists = qry(
+                    "SELECT id FROM queries WHERE engagement_id=%s AND query_text=%s",
+                    (eid, o.get("query_text","")), one=True
+                )
+                if not exists:
+                    execute(
+                        "INSERT INTO queries (firm_id,engagement_id,sr_no,query_text,"
+                        "raised_by_id,task_reference,status) VALUES (%s,%s,%s,%s,%s,%s,'Open')",
+                        (g.firm_id, eid, max_sr + 1, o.get("query_text",""),
+                         g.user["id"], f"Day Log: {log_date}")
+                    )
+
+    for idx, p in enumerate(d.get("pending", [])):
+        if p.get("doc_name"):
+            execute(
+                "INSERT INTO audit_day_log_items "
+                "(log_id,item_type,doc_name,responsible,doc_status,sort_order) "
+                "VALUES (%s,'pending',%s,%s,%s,%s)",
+                (lid, p.get("doc_name",""), p.get("responsible",""),
+                 p.get("doc_status","Pending"), idx)
+            )
+            # Auto-create task for pending document
+            exists_task = qry(
+                "SELECT id FROM tasks WHERE engagement_id=%s AND title=%s AND firm_id=%s",
+                (eid, f"[Pending Doc] {p.get('doc_name','')}", g.firm_id), one=True
+            )
+            if not exists_task:
+                qry_id(
+                    "INSERT INTO tasks (firm_id,engagement_id,title,area,priority,status,created_by_id) "
+                    "VALUES (%s,%s,%s,'Documentation','High','Pending',%s)",
+                    (g.firm_id, eid,
+                     f"[Pending Doc] {p.get('doc_name','')}",
+                     g.user["id"])
+                )
+
+    log_action(g.firm_id, g.user["id"], "SAVE_DAY_LOG", "DayLog", lid,
+               f"Day log saved for {log_date}", request.remote_addr)
+    return jsonify({"id": lid, "message": "Day log saved"}), 201
+
+
+@app.route("/api/day-logs/<int:lid>/confirm", methods=["POST"])
+@login_required
+def confirm_day_log(lid):
+    """Client user confirms the day log — stamps and locks it."""
+    log = qry("SELECT * FROM audit_day_logs WHERE id=%s AND firm_id=%s",
+              (lid, g.firm_id), one=True)
+    if not log:
+        return jsonify({"detail": "Not found"}), 404
+    if log.get("is_locked"):
+        return jsonify({"detail": "Already confirmed and locked"}), 400
+    if g.user["role"] != "Client":
+        return jsonify({"detail": "Only a Client user can confirm a day log"}), 403
+
+    execute(
+        "UPDATE audit_day_logs SET is_confirmed=TRUE, confirmed_by=%s, "
+        "confirmed_at=NOW(), confirmed_user_id=%s, is_locked=TRUE WHERE id=%s",
+        (g.user["full_name"], g.user["id"], lid)
+    )
+    log_action(g.firm_id, g.user["id"], "CONFIRM_DAY_LOG", "DayLog", lid,
+               f"Confirmed by {g.user['full_name']}", request.remote_addr)
+    return jsonify({"message": "Day log confirmed and locked",
+                    "confirmed_by": g.user["full_name"]})
+
+
+@app.route("/api/day-logs/<int:lid>", methods=["DELETE"])
+@require_role("Admin", "Team Leader")
+def delete_day_log(lid):
+    log = qry("SELECT * FROM audit_day_logs WHERE id=%s AND firm_id=%s",
+              (lid, g.firm_id), one=True)
+    if not log:
+        return jsonify({"detail": "Not found"}), 404
+    if log.get("is_locked"):
+        return jsonify({"detail": "Cannot delete a confirmed log"}), 403
+    execute("DELETE FROM audit_day_log_items WHERE log_id=%s", (lid,))
+    execute("DELETE FROM audit_day_logs WHERE id=%s", (lid,))
+    return jsonify({"message": "Deleted"})
+
+# ═══════════════════════════════════════════════════════════════
 #  HEALTH CHECK
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/health")
