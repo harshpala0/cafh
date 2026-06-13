@@ -332,7 +332,7 @@ const API_BASE = '';  // Same origin — no change needed!
 <script>
 let T=localStorage.getItem('at')||'',U=JSON.parse(localStorage.getItem('au')||'null'),S={};
 
- async function openDayLogTab(eid) {
+async function openDayLogTab(eid) {
     // Navigate into the engagement if not already there
     if (!S.curEng || S.curEng.id !== eid) {
         await oEng(eid);
@@ -362,7 +362,7 @@ let T=localStorage.getItem('at')||'',U=JSON.parse(localStorage.getItem('au')||'n
     dlSection.scrollIntoView({ behavior: 'smooth' });
     await lDayLogs(eid);
 }
- 
+
   
 /* ── SUBSCRIPTION GATE ── */
 const SUB_TOKEN_KEY = 'sub_tk';
@@ -609,11 +609,13 @@ async function lDash(){
         <button class="btn btn-o" onclick="nav('reports')" style="justify-content:center">📊 Reports</button>
       </div></div>
     </div>
+    
     ${alerts.length?`<div class="card" style="margin-top:16px"><div class="card-h" style="color:var(--err)">⚠ Active Alerts (${alerts.length})</div><div class="card-b" style="display:flex;flex-direction:column;gap:6px">
     ${alerts.slice(0,8).map(a=>`<div style="padding:8px 10px;border-radius:6px;font-size:12px;background:${a.severity==='high'?'var(--err-bg)':a.severity==='warn'?'var(--warn-bg)':'var(--info-bg)'};color:${a.severity==='high'?'var(--err)':a.severity==='warn'?'var(--warn)':'var(--info)'}">
       ${a.message}</div>`).join('')}
     </div></div>`:''}`;
   pollAlerts();
+   setTimeout(() => openDayLogTab(id), 100)
 }
 
 // ── CLIENTS ──
@@ -682,7 +684,7 @@ async function oEng(id){
   const progs=isClient?[]:await api('/api/programs/');
   S.curEng=eng;S.tasks=tasks;if(!isClient)S.users=S.users||await api('/api/users/');
   document.getElementById('pt').textContent=`${eng.client?.name||''} — ${eng.title}`;
-  document.getElementById('pa').innerHTML=`<button class="btn btn-s btn-o" onclick="lEng()">← Back</button>${!isClient?` <button class="btn btn-s btn-g" onclick="tfm(${id})">+ Add Task</button> <button class="btn btn-s btn-ok" onclick="dlBook(${id})">📄 Booklet</button>  <button class="btn btn-s btn-p" onclick="openDayLogTab(${id})">📋 Day Logs</button>`:''}`;
+  document.getElementById('pa').innerHTML=`<button class="btn btn-s btn-o" onclick="lEng()">← Back</button>${!isClient?` <button class="btn btn-s btn-g" onclick="tfm(${id})">+ Add Task</button> <button class="btn btn-s btn-ok" onclick="dlBook(${id})">📄 Booklet</button> <button class="btn btn-s btn-p" onclick="openDayLogTab(${id})">📋 Day Logs</button>`:''}`;
   const po=progs.map(p=>`<option value="${p.id}">${p.name} (${p.checklist_items?.length||0} items)</option>`).join('');
   document.getElementById('pb').innerHTML=`
     <div style="display:grid;grid-template-columns:1fr${!isClient?' 1fr':''};gap:14px;margin-bottom:18px">
