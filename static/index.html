@@ -1225,7 +1225,53 @@ async function oTask(tid){
       <div class="card"><div class="card-h">Details</div><div class="card-b" style="font-size:13px"><p><strong>Area:</strong> ${task.area||'-'} &nbsp; <strong>Priority:</strong> ${pb(task.priority)} &nbsp; <strong>Status:</strong> ${sb(task.status)}</p><p><strong>Assignee:</strong> ${(task.assignees&&task.assignees.length?task.assignees.map(a=>`<span style='display:inline-block;background:var(--bg2);border-radius:4px;padding:1px 6px;font-size:12px;margin:1px'>${a.full_name}</span>`).join(' '):'Unassigned')} &nbsp; <strong>Due:</strong> ${fd(task.due_date)} &nbsp; <strong>WP:</strong> ${task.working_paper_ref||'-'}</p>${task.description?`<p style="margin-top:6px;color:var(--text2)">${task.description}</p>`:''}</div></div>
       <div class="card"><div class="card-h">Quick Update</div><div class="card-b"><div class="fg"><label>Status</label><select id="tss" style="width:100%;padding:7px;border:1.5px solid var(--border);border-radius:var(--r);font:inherit">${so}</select></div><button class="btn btn-p btn-s" onclick="uTS(${tid})" style="width:100%;justify-content:center">Update</button></div></div>
     </div>
-    <div class="tabs"><div class="tab on" onclick="stab(this,'ctab')">Comments (${cmts.length})</div><div class="tab" onclick="stab(this,'ftab')">Files (${files.length})</div><div class="tab" onclick="stab(this,'rtab')">Reviews (${revs.length})</div><div class="tab" onclick="stab(this,'tltab');lTimeLogs(${task.id})">⏱ Time</div></div>
+// ── PATCH 1: In oEng(), add Day Logs tab to the engagement header buttons ──
+// Find this line inside oEng():
+//   <button class="btn btn-s btn-ok" onclick="dlBook(${id})">📄 Booklet</button>
+// Replace with:
+//   <button class="btn btn-s btn-ok" onclick="dlBook(${id})">📄 Booklet</button>
+//   <button class="btn btn-s btn-p" onclick="openDayLogTab(${id})">📋 Day Logs</button>
+
+// ── PATCH 2: Add this new function anywhere in the script ──
+async function openDayLogTab(eid) {
+    // Navigate into the engagement if not already there
+    if (!S.curEng || S.curEng.id !== eid) {
+        await oEng(eid);
+        return; // oEng will call lDayLogs via tab
+    }
+    // Scroll to and activate the Day Logs section inline
+    const pb = document.getElementById('pb');
+    // Append day log section below existing engagement content
+    let dlSection = document.getElementById('dl-section');
+    if (!dlSection) {
+        dlSection = document.createElement('div');
+        dlSection.id = 'dl-section';
+        dlSection.className = 'card';
+        dlSection.style.marginTop = '16px';
+        dlSection.innerHTML = `
+          <div class="card-h" style="background:linear-gradient(90deg,var(--icai-navy),var(--icai-navy-m));color:#fff">
+            📋 Audit Day Logs
+            <span style="font-size:11px;font-weight:400;margin-left:8px;opacity:.7">
+              Daily documentation · Client confirmation
+            </span>
+          </div>
+          <div class="card-b" id="dl-tab-inner">
+            <div class="empty"><p>Loading...</p></div>
+          </div>`;
+        pb.appendChild(dlSection);
+    }
+    dlSection.scrollIntoView({ behavior: 'smooth' });
+    await lDayLogs(eid);
+}
+
+// ── PATCH 3: At the END of oEng() function, add this line so day logs
+//    load automatically when an engagement is opened ──
+// Find the last line of oEng() which is:   document.getElementById('pb').innerHTML = `...`;
+// After the entire innerHTML assignment closes, add:
+//
+//   // Auto-load day logs section
+//   setTimeout(() => openDayLogTab(id), 100);
+    
     <div id="ctab">
       <div style="margin-bottom:14px"><div class="fg"><label>Add Comment</label><textarea id="nc" rows="3" placeholder="Write comment..."></textarea></div><div style="display:flex;align-items:center;gap:8px"><label style="font-size:13px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="nq"> Mark as Query</label><button class="btn btn-p btn-s" onclick="addC(${tid})">Post</button></div></div>
       ${cmts.length?cmts.map(c=>`<div class="ci ${c.is_query?'iq':''}"><div class="cm"><strong>${c.author?.full_name||'?'}</strong><span>${new Date(c.created_at).toLocaleString('en-IN')}</span>${c.is_query?'<span class="bg bg-opn">Query</span>':''}</div><div>${c.content}</div>${c.author_id===U.id?`<div class="ca"><button class="btn btn-xs btn-o" onclick="edC(${c.id},\`${c.content.replace(/`/g,"'")}\`,${c.is_query})">Edit</button><button class="btn btn-xs btn-err" onclick="dlC(${c.id},${tid})">Delete</button></div>`:''}</div>`).join(''):'<div class="empty"><p>No comments.</p></div>'}
