@@ -1907,6 +1907,291 @@ def delete_day_log(lid):
     return jsonify({"message": "Deleted"})
 
 # ═══════════════════════════════════════════════════════════════
+#  TDS INTEREST CALCULATOR u/s 201(1A) — EXCEL EXPORT
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/tools/tds-interest/export-excel", methods=["POST"])
+@login_required
+def tds_interest_export_excel():
+    import os, tempfile
+    try:
+        import openpyxl
+        from openpyxl.styles import (Font, PatternFill, Alignment,
+                                     Border, Side, GradientFill)
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return jsonify({"detail": "openpyxl not installed"}), 500
+
+    data     = request.get_json(silent=True) or {}
+    assessee = data.get("assessee", "")
+    tan      = data.get("tan", "")
+    ay       = data.get("ay", "")
+    quarter  = data.get("quarter", "")
+    rows     = data.get("rows", [])
+
+    # ── Styles ──────────────────────────────────────────────────
+    def side(color="D1DAEA"): return Side(style="thin", color=color)
+    def bdr(c="D1DAEA"):
+        s = side(c)
+        return Border(left=s, right=s, top=s, bottom=s)
+    def fill(hex_): return PatternFill("solid", fgColor=hex_)
+    def font(bold=False, color="000000", size=10, name="Arial"):
+        return Font(name=name, bold=bold, color=color, size=size)
+    def align(h="left", v="center", wrap=False):
+        return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TDS Interest 201(1A)"
+
+    # ── Title block ─────────────────────────────────────────────
+    ws.merge_cells("A1:V1")
+    t = ws["A1"]
+    t.value       = "TDS INTEREST CALCULATION STATEMENT — SECTION 201(1A)"
+    t.font        = Font(name="Arial", bold=True, size=14, color="FFFFFF")
+    t.fill        = fill("003366")
+    t.alignment   = align("center")
+    ws.row_dimensions[1].height = 28
+
+    info = [
+        ("Assessee", assessee), ("TAN", tan),
+        ("Assessment Year", ay), ("Quarter", quarter),
+        ("Generated on", datetime.now().strftime("%d-%m-%Y %H:%M")),
+    ]
+    for i, (k, v) in enumerate(info, 2):
+        ws.merge_cells(f"A{i}:C{i}")
+        ws.merge_cells(f"D{i}:F{i}")
+        c1 = ws.cell(row=i, column=1, value=k)
+        c2 = ws.cell(row=i, column=4, value=v)
+        c1.font = font(bold=True); c1.fill = fill("F0F4F8")
+        c2.font = font(); c2.fill = fill("FFFFFF")
+        for c in [c1, c2]: c.border = bdr(); c.alignment = align()
+
+    # ── Section headers (row 8 & 9) ─────────────────────────────
+    HDR_ROW1 = 8
+    HDR_ROW2 = 9
+
+    # Row 8 — group headers
+    groups = [
+        ("A", "F",  "PARTY & TDS DETAILS",           "003366", "DAA520"),
+        ("G", "J",  "DEDUCTION",                     "7C5A00", "FFE082"),
+        ("K", "N",  "DEPOSIT",                       "1A4D2E", "A5D6A7"),
+        ("O", "R",  "LATE DEDUCTION INTEREST (1%)",  "7C1F1F", "FFCDD2"),
+        ("S", "V",  "LATE DEPOSIT INTEREST (1.5%)",  "1A237E", "C5CAE9"),
+    ]
+    for c1, c2, label, bg, fg in groups:
+        ws.merge_cells(f"{c1}{HDR_ROW1}:{c2}{HDR_ROW1}")
+        cell = ws[f"{c1}{HDR_ROW1}"]
+        cell.value     = label
+        cell.font      = Font(name="Arial", bold=True, color=fg, size=10)
+        cell.fill      = fill(bg)
+        cell.alignment = align("center")
+        cell.border    = bdr("FFFFFF")
+    ws.row_dimensions[HDR_ROW1].height = 20
+
+    # Row 9 — column headers
+    col_headers = [
+        "Sr No", "Name of Party", "Expense (Rs)", "Taxable Amount (Rs)",
+        "Section", "Rate (TDS %)",
+        # Deduction
+        "TDS Liability (Rs)", "TDS Actual (Rs)",
+        "Due Date (Deduction)", "Actual Date (Deduction)",
+        # Deposit
+        "TDS Liability (Rs)", "TDS Actual (Rs)",
+        "Due Date (Deposit)", "Actual Date (Deposit)",
+        # Late Deduction
+        "No of Days", "No of Months", "Interest on Deduction Default (Rs)",
+        # Late Deposit
+        "No of Days", "No of Months", "Interest on Deposit Default (Rs)",
+        # Total
+        "Total Interest Payable (Rs)"
+    ]
+    col_fills = (
+        ["003366"]*6 +
+        ["7C5A00"]*4 +
+        ["1A4D2E"]*4 +
+        ["7C1F1F"]*3 +
+        ["1A237E"]*3 +
+        ["003366"]
+    )
+    col_fgs = (
+        ["FFFFFF"]*6 +
+        ["FFE082"]*4 +
+        ["A5D6A7"]*4 +
+        ["FFCDD2"]*3 +
+        ["C5CAE9"]*3 +
+        ["DAA520"]
+    )
+    for ci, (hdr, bg, fg) in enumerate(zip(col_headers, col_fills, col_fgs), 1):
+        cell = ws.cell(row=HDR_ROW2, column=ci, value=hdr)
+        cell.font      = Font(name="Arial", bold=True, color=fg, size=9)
+        cell.fill      = fill(bg)
+        cell.alignment = align("center", wrap=True)
+        cell.border    = bdr("FFFFFF")
+    ws.row_dimensions[HDR_ROW2].height = 40
+
+    # ── Data rows ────────────────────────────────────────────────
+    DATA_START = 10
+    total_ded_int = 0
+    total_dep_int = 0
+    total_tds_act = 0
+
+    for ri, row in enumerate(rows):
+        r_num  = DATA_START + ri
+        bg_row = "FFF3F3" if row.get("total_int", 0) > 0 else ("F7F9FC" if ri % 2 else "FFFFFF")
+
+        vals = [
+            row.get("sr", ri+1),
+            row.get("party", ""),
+            row.get("expense", 0),
+            row.get("taxable", 0),
+            row.get("section", ""),
+            row.get("rate", 0),
+            row.get("ded_liab", 0),
+            row.get("ded_actual", 0),
+            row.get("ded_due", ""),
+            row.get("ded_date", ""),
+            row.get("dep_liab", 0),
+            row.get("dep_actual", 0),
+            row.get("dep_due", ""),
+            row.get("dep_date", ""),
+            row.get("dd_days", 0),
+            row.get("dd_months", 0),
+            row.get("dd_int", 0),
+            row.get("dp_days", 0),
+            row.get("dp_months", 0),
+            row.get("dp_int", 0),
+            row.get("total_int", 0),
+        ]
+
+        num_cols  = {3,4,7,8,11,12,15,16,17,18,19,20,21}
+        date_cols = {9,10,13,14}
+
+        for ci, val in enumerate(vals, 1):
+            cell = ws.cell(row=r_num, column=ci, value=val)
+            cell.fill   = fill(bg_row)
+            cell.border = bdr()
+            if ci in num_cols:
+                cell.alignment = align("right")
+                cell.font      = Font(name="Arial", size=10,
+                                      bold=(ci == 21),
+                                      color="C53030" if (ci in {17,20,21} and val > 0)
+                                            else "003366" if ci == 21 else "000000")
+                if ci in {3,4,7,8,11,12,17,20,21} and isinstance(val,(int,float)):
+                    cell.number_format = '#,##0'
+            elif ci in date_cols:
+                cell.alignment = align("center")
+                cell.font      = Font(name="Arial", size=10)
+            else:
+                cell.alignment = align("left")
+                cell.font      = Font(name="Arial", size=10)
+
+        total_tds_act += row.get("ded_actual", 0)
+        total_ded_int += row.get("dd_int", 0)
+        total_dep_int += row.get("dp_int", 0)
+        ws.row_dimensions[r_num].height = 18
+
+    # ── Totals row ───────────────────────────────────────────────
+    tot_row = DATA_START + len(rows)
+    ws.merge_cells(f"A{tot_row}:G{tot_row}")
+    tc = ws.cell(row=tot_row, column=1, value="TOTAL")
+    tc.font = Font(name="Arial", bold=True, size=11, color="FFFFFF")
+    tc.fill = fill("003366")
+    tc.alignment = align("center")
+    tc.border = bdr()
+
+    total_pairs = [
+        (8,  total_tds_act),
+        (17, total_ded_int),
+        (20, total_dep_int),
+        (21, total_ded_int + total_dep_int),
+    ]
+    for col, val in total_pairs:
+        cell = ws.cell(row=tot_row, column=col, value=val)
+        cell.font      = Font(name="Arial", bold=True, size=11,
+                              color="FFFFFF" if col == 21 else "DAA520")
+        cell.fill      = fill("003366")
+        cell.alignment = align("right")
+        cell.border    = bdr()
+        cell.number_format = '#,##0'
+
+    for col in range(9, 21):
+        if col not in [c for c, _ in total_pairs]:
+            cell = ws.cell(row=tot_row, column=col, value="")
+            cell.fill   = fill("003366")
+            cell.border = bdr()
+    ws.row_dimensions[tot_row].height = 22
+
+    # ── Summary box ──────────────────────────────────────────────
+    sum_start = tot_row + 2
+    summary = [
+        ("Total TDS Deducted (Actual)",        total_tds_act,  "1A4D2E", "FFFFFF"),
+        ("Interest on Late Deduction @ 1%",    total_ded_int,  "7C1F1F", "FFFFFF"),
+        ("Interest on Late Deposit @ 1.5%",    total_dep_int,  "1A237E", "FFFFFF"),
+        ("TOTAL INTEREST PAYABLE u/s 201(1A)", total_ded_int+total_dep_int, "003366", "DAA520"),
+    ]
+    for i, (label, val, bg, fg) in enumerate(summary):
+        r = sum_start + i
+        ws.merge_cells(f"A{r}:D{r}")
+        ws.merge_cells(f"E{r}:H{r}")
+        lc = ws.cell(row=r, column=1, value=label)
+        vc = ws.cell(row=r, column=5, value=val)
+        lc.font = Font(name="Arial", bold=True, size=11, color=fg)
+        lc.fill = fill(bg); lc.alignment = align("left"); lc.border = bdr()
+        vc.font = Font(name="Arial", bold=True, size=12, color=fg)
+        vc.fill = fill(bg); vc.alignment = align("right"); vc.border = bdr()
+        vc.number_format = '₹#,##0'
+        ws.row_dimensions[r].height = 22
+
+    # ── Note ─────────────────────────────────────────────────────
+    note_row = sum_start + len(summary) + 1
+    ws.merge_cells(f"A{note_row}:V{note_row}")
+    nc = ws.cell(row=note_row, column=1,
+                 value="Note: Interest calculated as per Sec 201(1A) — Part month treated as full month "
+                       "(Days ÷ 30, rounded up). Late deduction interest @ 1% p.m. on TDS Liability. "
+                       "Late deposit interest @ 1.5% p.m. on TDS Actual. Interest rounded to nearest rupee per entry.")
+    nc.font      = Font(name="Arial", italic=True, size=9, color="666666")
+    nc.alignment = align("left", wrap=True)
+    ws.row_dimensions[note_row].height = 30
+
+    # ── Footer ───────────────────────────────────────────────────
+    ft_row = note_row + 1
+    ws.merge_cells(f"A{ft_row}:V{ft_row}")
+    fc = ws.cell(row=ft_row, column=1,
+                 value=f"Generated by CA FirmHub | {datetime.now().strftime('%d-%m-%Y %H:%M')}")
+    fc.font      = Font(name="Arial", size=9, color="999999", italic=True)
+    fc.alignment = align("right")
+
+    # ── Column widths ────────────────────────────────────────────
+    col_widths = [
+        6, 22, 14, 16, 28, 10,
+        16, 14, 16, 16,
+        16, 14, 16, 16,
+        10, 10, 20,
+        10, 10, 20,
+        18
+    ]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws.freeze_panes = "A10"
+
+    # ── Save and serve ───────────────────────────────────────────
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".xlsx", delete=False,
+        dir=os.path.join(os.path.dirname(__file__), "static"))
+    tmp.close()
+    wb.save(tmp.name)
+
+    assessee_safe = (assessee or "Report").replace(" ", "_")
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=f"TDS_Interest_201_1A_{assessee_safe}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+# ═══════════════════════════════════════════════════════════════
 #  HEALTH CHECK
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/health")
