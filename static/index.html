@@ -242,7 +242,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
     <div class="ni" data-p="calendar" onclick="nav('calendar')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Statutory Calendar</div>
     <div class="ni" data-p="reports" onclick="nav('reports')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>Reports</div>
     <div class="nav-sec">CA Tools</div>
-    <div class="ni" data-p="taxaudit" onclick="nav('taxaudit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/><path d="M8 7h8M8 17h4"/></svg>Tax Audit 44AB</div>
+    <div class="ni" data-p="tdsinterest" onclick="nav('tdsinterest')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/><path d="M8 12h.01"/></svg>TDS Interest 201(1A)</div> <div class="ni" data-p="taxaudit" onclick="nav('taxaudit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/><path d="M8 7h8M8 17h4"/></svg>Tax Audit 44AB</div>
     <div class="ni" data-p="challanreader" onclick="nav('challanreader')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>PF &amp; ESIC Challan</div>
     <div class="ni" data-p="workpapers" onclick="nav('workpapers')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>Audit Working Papers</div>
     <div class="nav-sec">Admin</div>
@@ -446,7 +446,7 @@ function nav(p){
   document.querySelector(`.ni[data-p="${p}"]`)?.classList.add('on');
   const t={dashboard:'Dashboard',clients:'Clients',engagements:'Engagements',tasks:'Tasks',queries:'Query Sheet',programs:'Audit Programs',workpapers:'Audit Working Papers',users:'User Management',logs:'Audit Logs'};
   document.getElementById('pt').textContent=t[p]||p;document.getElementById('pa').innerHTML='';
-  ({dashboard:lDash,clients:lClients,engagements:lEng,tasks:lTasks,queries:lQueries,programs:lProg,users:lUsers,logs:lLogs,invoices:lInvoices,docregister:lDocReg,calendar:lCalendar,reports:lReports,taxaudit:lTaxAudit,challanreader:lChallanReader,workpapers:lWorkpapers,firmsettings:lFirmSettings})[p]?.();
+  ({dashboard:lDash,clients:lClients,engagements:lEng,tasks:lTasks,queries:lQueries,programs:lProg,users:lUsers,logs:lLogs,invoices:lInvoices,docregister:lDocReg,calendar:lCalendar,reports:lReports,taxaudit:lTaxAudit,challanreader:lChallanReader,workpapers:lWorkpapers,firmsettings:lFirmSettings,tdsinterest:lTdsInterest})[p]?.();
 }
 
 function sb(s){const m={'Pending':'pen','In Progress':'prog','Completed':'comp','Under Review':'rev','Approved':'app','Rejected':'rej'};return`<span class="bg bg-${m[s]||'pen'}">${s}</span>`;}
@@ -1515,6 +1515,333 @@ async function exportChallanExcel(){
     const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='PF_ESIC_Challan_Clause20_Report.xlsx';a.click();toast('Form 3CD Excel downloaded!');
   }catch(e){toast(e.message,'err');}
 }
+
+/* ══════════════════════════════════════════════════
+   TDS INTEREST CALCULATOR u/s 201(1A)
+   Late Deduction: 1% per month (part month = full month)
+   Late Deposit:  1.5% per month (part month = full month)
+   Months = ROUNDUP(days/30, 0)  — matches Excel logic
+   Interest rounded to nearest rupee per row
+   ══════════════════════════════════════════════════ */
+
+const TDS_SECTIONS = [
+  '192 - Salaries','192A - PF Withdrawal','193 - Interest on Securities',
+  '194 - Dividend','194A - Interest other than Securities','194B - Lottery/Crossword',
+  '194BB - Horse Race','194C - Contractors','194D - Insurance Commission',
+  '194DA - Life Insurance','194E - Non-Resident Sportsmen','194EE - NSS Deposits',
+  '194F - Mutual Fund Repurchase','194G - Commission on Lottery','194H - Commission/Brokerage',
+  '194I(a) - Rent (Plant & Machinery)','194I(b) - Rent (Land/Building)',
+  '194IA - Transfer of Immovable Property','194IB - Rent by Individual/HUF',
+  '194IC - Joint Development Agreement','194J - Professional/Technical Fees',
+  '194K - Income from Units','194LA - Compulsory Acquisition',
+  '194LB - Interest from Infrastructure Bond','194LC - Interest from Indian Company',
+  '194LD - Interest on Certain Bonds','194M - Certain Payments by Individual/HUF',
+  '194N - Cash Withdrawal','194O - E-Commerce','194P - Senior Citizen',
+  '194Q - Purchase of Goods','194R - Perquisites/Benefits',
+  '194S - VDA Transfer','195 - Other Sums to Non-Residents',
+  '196A - Income of Foreign Company','196B - Income from Units',
+  '196C - Income from Foreign Currency Bonds','196D - Income of FIIs'
+];
+
+let _tdsRows = [];
+
+function lTdsInterest() {
+  document.getElementById('pt').textContent = 'TDS Interest Calculator u/s 201(1A)';
+  document.getElementById('pa').innerHTML = `
+    <button class="btn btn-p" onclick="tdsAddRow()">+ Add Row</button>
+    <button class="btn btn-g" style="margin-left:6px" onclick="tdsExportExcel()">⬇ Export Excel</button>
+    <button class="btn btn-err" style="margin-left:6px" onclick="tdsClearAll()">🗑 Clear All</button>`;
+
+  document.getElementById('pb').innerHTML = `
+    <div style="background:var(--icai-navy);color:#fff;border-radius:var(--r-lg);padding:12px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Poppins',sans-serif;font-size:14px;font-weight:700">TDS Interest Calculator — Section 201(1A)</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.6);margin-top:2px">
+          Late Deduction: <strong style="color:var(--icai-gold-l)">1% per month</strong> &nbsp;·&nbsp;
+          Late Deposit: <strong style="color:var(--icai-gold-l)">1.5% per month</strong> &nbsp;·&nbsp;
+          Part month counted as full month (Days ÷ 30, rounded up)
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-h">Assessment Details</div>
+      <div class="card-b">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div class="fg"><label>Assessee Name</label><input id="tds-name" placeholder="e.g. ABC Pvt. Ltd."></div>
+          <div class="fg"><label>TAN</label><input id="tds-tan" placeholder="ABCD12345E" maxlength="10"></div>
+          <div class="fg"><label>Assessment Year</label><input id="tds-ay" placeholder="2024-25"></div>
+          <div class="fg"><label>Quarter</label>
+            <select id="tds-qtr">
+              <option>Q1 (Apr-Jun)</option><option>Q2 (Jul-Sep)</option>
+              <option>Q3 (Oct-Dec)</option><option>Q4 (Jan-Mar)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">
+        TDS Register
+        <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:8px">Enter dates using the date picker</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="dt" id="tds-table" style="min-width:1600px;font-size:12px">
+          <thead>
+            <tr style="background:var(--icai-navy)">
+              <th colspan="6" style="background:var(--icai-navy);color:var(--icai-gold-l);text-align:center;padding:8px;border-bottom:2px solid var(--icai-gold)">PARTY & TDS DETAILS</th>
+              <th colspan="4" style="background:#7c5a00;color:#FFE082;text-align:center;padding:8px;border-bottom:2px solid #FFE082">DEDUCTION</th>
+              <th colspan="4" style="background:#1a4d2e;color:#A5D6A7;text-align:center;padding:8px;border-bottom:2px solid #A5D6A7">DEPOSIT</th>
+              <th colspan="4" style="background:#7c1f1f;color:#FFCDD2;text-align:center;padding:8px;border-bottom:2px solid #FFCDD2">LATE DEDUCTION INTEREST (1%)</th>
+              <th colspan="4" style="background:#1a237e;color:#C5CAE9;text-align:center;padding:8px;border-bottom:2px solid #C5CAE9">LATE DEPOSIT INTEREST (1.5%)</th>
+              <th style="background:#2e2e2e;color:#fff;text-align:center;padding:8px"></th>
+            </tr>
+            <tr style="background:var(--surface2)">
+              <th style="min-width:40px">Sr.</th>
+              <th style="min-width:140px">Name of Party</th>
+              <th style="min-width:110px">Expense (₹)</th>
+              <th style="min-width:110px">Taxable Amt (₹)</th>
+              <th style="min-width:130px">Section</th>
+              <th style="min-width:80px">Rate (%)</th>
+              <th style="min-width:110px">TDS Liability (₹)</th>
+              <th style="min-width:110px">TDS Actual (₹)</th>
+              <th style="min-width:130px">Due Date</th>
+              <th style="min-width:130px">Actual Date</th>
+              <th style="min-width:110px">TDS Liability (₹)</th>
+              <th style="min-width:110px">TDS Actual (₹)</th>
+              <th style="min-width:130px">Due Date</th>
+              <th style="min-width:130px">Actual Date</th>
+              <th style="min-width:80px">Days</th>
+              <th style="min-width:80px">Months</th>
+              <th style="min-width:110px">Interest (₹)</th>
+              <th style="min-width:80px">Days</th>
+              <th style="min-width:80px">Months</th>
+              <th style="min-width:110px">Interest (₹)</th>
+              <th style="min-width:110px;color:var(--icai-gold)">Total Interest (₹)</th>
+              <th style="min-width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="tds-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tds-summary" style="display:none">
+      <div class="sg" style="grid-template-columns:repeat(4,1fr)">
+        <div class="sc bl"><div class="sl">Total TDS Deducted</div><div class="sv" id="sum-deducted" style="font-size:18px">₹0</div></div>
+        <div class="sc rd"><div class="sl">Late Deduction Interest (1%)</div><div class="sv" id="sum-ded-int" style="font-size:18px;color:var(--err)">₹0</div></div>
+        <div class="sc rd"><div class="sl">Late Deposit Interest (1.5%)</div><div class="sv" id="sum-dep-int" style="font-size:18px;color:var(--err)">₹0</div></div>
+        <div class="sc gd"><div class="sl">Total Interest Payable</div><div class="sv" id="sum-total-int" style="font-size:18px;color:var(--err)">₹0</div></div>
+      </div>
+    </div>`;
+
+  _tdsRows = [];
+  tdsAddRow();
+}
+
+function tdsAddRow() {
+  const idx = _tdsRows.length;
+  _tdsRows.push({ id: idx });
+  const tbody = document.getElementById('tds-body');
+  if (!tbody) return;
+
+  const sectionOpts = TDS_SECTIONS.map(s => `<option>${s}</option>`).join('');
+  const inp = (cls, placeholder='', type='text', extra='') =>
+    `<input type="${type}" class="${cls}-${idx}" data-idx="${idx}" placeholder="${placeholder}" ${extra}
+      style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font:inherit;font-size:12px"
+      oninput="tdsCalcRow(${idx})">`;
+  const datInp = (cls) =>
+    `<input type="date" class="${cls}-${idx}" data-idx="${idx}"
+      style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font:inherit;font-size:12px"
+      onchange="tdsCalcRow(${idx})">`;
+
+  const tr = document.createElement('tr');
+  tr.id = `tds-row-${idx}`;
+  tr.innerHTML = `
+    <td style="text-align:center;color:var(--text3);font-size:11px">${idx+1}</td>
+    <td>${inp('tds-party','e.g. ABC Ltd')}</td>
+    <td>${inp('tds-expense','0','number','min="0"')}</td>
+    <td>${inp('tds-taxable','0','number','min="0"')}</td>
+    <td><select class="tds-section-${idx}" data-idx="${idx}" onchange="tdsCalcRow(${idx})"
+      style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font:inherit;font-size:11px">
+      <option value="">-- Select --</option>${sectionOpts}
+    </select></td>
+    <td>${inp('tds-rate','2','number','step="0.01" min="0"')}</td>
+    <td><span class="tds-ded-liab-${idx}" style="font-weight:600;color:var(--icai-navy)">—</span></td>
+    <td>${inp('tds-ded-actual','0','number','min="0"')}</td>
+    <td>${datInp('tds-ded-due')}</td>
+    <td>${datInp('tds-ded-date')}</td>
+    <td><span class="tds-dep-liab-${idx}" style="font-weight:600;color:var(--icai-navy)">—</span></td>
+    <td>${inp('tds-dep-actual','0','number','min="0"')}</td>
+    <td>${datInp('tds-dep-due')}</td>
+    <td>${datInp('tds-dep-date')}</td>
+    <td class="tds-r-dd-days-${idx}" style="text-align:center;color:var(--text3)">—</td>
+    <td class="tds-r-dd-months-${idx}" style="text-align:center;color:var(--text3)">—</td>
+    <td class="tds-r-dd-int-${idx}" style="text-align:right;font-weight:700;color:var(--err)">—</td>
+    <td class="tds-r-dp-days-${idx}" style="text-align:center;color:var(--text3)">—</td>
+    <td class="tds-r-dp-months-${idx}" style="text-align:center;color:var(--text3)">—</td>
+    <td class="tds-r-dp-int-${idx}" style="text-align:right;font-weight:700;color:var(--err)">—</td>
+    <td class="tds-r-total-${idx}" style="text-align:right;font-weight:700;color:var(--icai-navy);background:var(--info-bg)">—</td>
+    <td><button type="button" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:16px"
+      onclick="tdsRemoveRow(${idx})">×</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function tdsRemoveRow(idx) {
+  const row = document.getElementById(`tds-row-${idx}`);
+  if (row) row.remove();
+  tdsUpdateSummary();
+}
+
+function tdsCalcRow(idx) {
+  const taxable = parseFloat(document.querySelector(`.tds-taxable-${idx}`)?.value) || 0;
+  const rate    = parseFloat(document.querySelector(`.tds-rate-${idx}`)?.value) || 0;
+  const tdsLiab = Math.round(taxable * rate / 100);
+
+  const dedLiabEl = document.querySelector(`.tds-ded-liab-${idx}`);
+  const depLiabEl = document.querySelector(`.tds-dep-liab-${idx}`);
+  if (dedLiabEl) dedLiabEl.textContent = tdsLiab ? '₹' + tdsLiab.toLocaleString('en-IN') : '—';
+  if (depLiabEl) depLiabEl.textContent = tdsLiab ? '₹' + tdsLiab.toLocaleString('en-IN') : '—';
+
+  const dedDue  = document.querySelector(`.tds-ded-due-${idx}`)?.value;
+  const dedDate = document.querySelector(`.tds-ded-date-${idx}`)?.value;
+  const depDue  = document.querySelector(`.tds-dep-due-${idx}`)?.value;
+  const depDate = document.querySelector(`.tds-dep-date-${idx}`)?.value;
+
+  const tdsActualDed = parseFloat(document.querySelector(`.tds-ded-actual-${idx}`)?.value) || tdsLiab;
+  const tdsActualDep = parseFloat(document.querySelector(`.tds-dep-actual-${idx}`)?.value) || tdsActualDed;
+
+  let ddDays=0, ddMonths=0, ddInt=0;
+  if (dedDue && dedDate) {
+    const due = new Date(dedDue), act = new Date(dedDate);
+    if (act > due) {
+      ddDays = Math.floor((act - due) / (1000*60*60*24));
+      ddMonths = Math.ceil(ddDays / 30);
+      ddInt = Math.round(tdsLiab * 0.01 * ddMonths);
+    }
+  }
+
+  let dpDays=0, dpMonths=0, dpInt=0;
+  if (depDue && depDate) {
+    const due = new Date(depDue), act = new Date(depDate);
+    if (act > due) {
+      dpDays = Math.floor((act - due) / (1000*60*60*24));
+      dpMonths = Math.ceil(dpDays / 30);
+      dpInt = Math.round(tdsActualDep * 0.015 * dpMonths);
+    }
+  }
+
+  const totalInt = ddInt + dpInt;
+  const set = (cls, val) => { const el = document.querySelector(cls); if (el) el.textContent = val; };
+  const inr = v => v > 0 ? '₹' + v.toLocaleString('en-IN') : '—';
+  const num = v => v > 0 ? v : '—';
+
+  set(`.tds-r-dd-days-${idx}`,   num(ddDays));
+  set(`.tds-r-dd-months-${idx}`, num(ddMonths));
+  set(`.tds-r-dd-int-${idx}`,    inr(ddInt));
+  set(`.tds-r-dp-days-${idx}`,   num(dpDays));
+  set(`.tds-r-dp-months-${idx}`, num(dpMonths));
+  set(`.tds-r-dp-int-${idx}`,    inr(dpInt));
+  set(`.tds-r-total-${idx}`,     totalInt > 0 ? '₹' + totalInt.toLocaleString('en-IN') : '—');
+
+  const row = document.getElementById(`tds-row-${idx}`);
+  if (row) row.style.background = totalInt > 0 ? 'var(--err-bg)' : '';
+
+  tdsUpdateSummary();
+}
+
+function tdsUpdateSummary() {
+  let totalDeducted=0, totalDedInt=0, totalDepInt=0;
+  document.querySelectorAll('[id^="tds-row-"]').forEach(row => {
+    const idx = row.id.replace('tds-row-','');
+    const tdsActualDed = parseFloat(document.querySelector(`.tds-ded-actual-${idx}`)?.value) || 0;
+    totalDeducted += tdsActualDed;
+
+    const ddIntEl = document.querySelector(`.tds-r-dd-int-${idx}`)?.textContent;
+    const dpIntEl = document.querySelector(`.tds-r-dp-int-${idx}`)?.textContent;
+    if (ddIntEl && ddIntEl !== '—') totalDedInt += parseInt(ddIntEl.replace(/[₹,]/g,''))||0;
+    if (dpIntEl && dpIntEl !== '—') totalDepInt += parseInt(dpIntEl.replace(/[₹,]/g,''))||0;
+  });
+
+  const sumDiv = document.getElementById('tds-summary');
+  if (sumDiv) sumDiv.style.display = 'block';
+
+  const inr = v => '₹' + v.toLocaleString('en-IN');
+  const setEl = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  setEl('sum-deducted',   inr(totalDeducted));
+  setEl('sum-ded-int',    inr(totalDedInt));
+  setEl('sum-dep-int',    inr(totalDepInt));
+  setEl('sum-total-int',  inr(totalDedInt + totalDepInt));
+}
+
+function tdsClearAll() {
+  if (!confirm('Clear all TDS entries? This cannot be undone.')) return;
+  document.getElementById('tds-body').innerHTML = '';
+  _tdsRows = [];
+  const sumDiv = document.getElementById('tds-summary');
+  if (sumDiv) sumDiv.style.display = 'none';
+  tdsAddRow();
+  toast('All entries cleared');
+}
+
+async function tdsExportExcel() {
+  try {
+    const rows = [];
+    document.querySelectorAll('[id^="tds-row-"]').forEach(row => {
+      const idx = row.id.replace('tds-row-','');
+      const get = cls => document.querySelector(`.${cls}-${idx}`)?.value || '';
+      const getTxt = cls => document.querySelector(`.${cls}-${idx}`)?.textContent?.replace('₹','').replace(/,/g,'').trim() || '0';
+      rows.push({
+        sr: parseInt(idx)+1,
+        party:      get('tds-party'),
+        expense:    parseFloat(get('tds-expense'))||0,
+        taxable:    parseFloat(get('tds-taxable'))||0,
+        section:    document.querySelector(`.tds-section-${idx}`)?.value || '',
+        rate:       parseFloat(get('tds-rate'))||0,
+        ded_liab:   parseFloat(getTxt('tds-ded-liab').replace('—','0'))||0,
+        ded_actual: parseFloat(get('tds-ded-actual'))||0,
+        ded_due:    get('tds-ded-due'),
+        ded_date:   get('tds-ded-date'),
+        dep_liab:   parseFloat(getTxt('tds-dep-liab').replace('—','0'))||0,
+        dep_actual: parseFloat(get('tds-dep-actual'))||0,
+        dep_due:    get('tds-dep-due'),
+        dep_date:   get('tds-dep-date'),
+        dd_days:    parseInt(document.querySelector(`.tds-r-dd-days-${idx}`)?.textContent)||0,
+        dd_months:  parseInt(document.querySelector(`.tds-r-dd-months-${idx}`)?.textContent)||0,
+        dd_int:     parseInt((document.querySelector(`.tds-r-dd-int-${idx}`)?.textContent||'0').replace(/[₹,—]/g,''))||0,
+        dp_days:    parseInt(document.querySelector(`.tds-r-dp-days-${idx}`)?.textContent)||0,
+        dp_months:  parseInt(document.querySelector(`.tds-r-dp-months-${idx}`)?.textContent)||0,
+        dp_int:     parseInt((document.querySelector(`.tds-r-dp-int-${idx}`)?.textContent||'0').replace(/[₹,—]/g,''))||0,
+        total_int:  parseInt((document.querySelector(`.tds-r-total-${idx}`)?.textContent||'0').replace(/[₹,—]/g,''))||0,
+      });
+    });
+
+    if (!rows.length) return toast('No data to export', 'err');
+
+    toast('Generating Excel…', 'info');
+    const payload = {
+      assessee: document.getElementById('tds-name')?.value || '',
+      tan:      document.getElementById('tds-tan')?.value || '',
+      ay:       document.getElementById('tds-ay')?.value || '',
+      quarter:  document.getElementById('tds-qtr')?.value || '',
+      rows
+    };
+
+    const r = await fetch('/api/tools/tds-interest/export-excel', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const b = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `TDS_Interest_201_1A_${(payload.assessee||'Report').replace(/ /g,'_')}.xlsx`;
+    a.click();
+    toast('Excel exported!');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
 </script>
 </body>
 </html>
