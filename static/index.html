@@ -1358,7 +1358,7 @@ async function lTaxAudit(){
     <div class="card" style="position:sticky;top:0">
       <div class="card-h">Client & File Details</div>
       <div class="card-b" style="display:flex;flex-direction:column;gap:10px">
-        <div class="fg"><label>Assessee Name</label><input id="ta-name" placeholder="e.g. Ramesh Traders"></div>
+        <div class="fg"><label>Assessee Name</label><input id="ta-name" placeholder="Client Name"></div>
         <div class="fg"><label>PAN</label><input id="ta-pan" placeholder="ABCDE1234F" maxlength="10"></div>
         <div class="fg"><label>Assessment Year</label><input id="ta-ay" value="2024-25"></div>
         <div class="fr">
@@ -1442,13 +1442,13 @@ async function lChallanReader(){
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
     <div class="card"><div class="card-h" style="background:linear-gradient(90deg,#003366,#1a4d80);color:#fff">📁 PF Challans (EPFO / ECR)</div><div class="card-b">
-      <div class="fg"><label>Establishment Name (for verification)</label><input id="cr-pf-entity" placeholder="e.g. ABC PRIVATE LIMITED" style="text-transform:uppercase"></div>
+      <div class="fg"><label>Establishment Name (for verification)</label><input id="cr-pf-entity" placeholder="e.g. Client Name" style="text-transform:uppercase"></div>
       <div class="fg"><label>Upload PF Challan PDFs</label><input type="file" id="cr-pf-files" multiple accept=".pdf" style="padding:6px;background:var(--surface2);border:2px dashed var(--border);border-radius:var(--r);cursor:pointer;width:100%"></div>
       <button class="btn btn-p" id="cr-pf-btn" onclick="parseChallan('PF')" style="width:100%;justify-content:center">⚙ Parse PF Challans</button>
       <div id="cr-pf-progress" style="display:none;margin-top:8px"><div style="height:6px;background:var(--border-l);border-radius:3px;overflow:hidden"><div id="cr-pf-bar" style="height:100%;background:var(--icai-navy);width:0%;transition:width .3s;border-radius:3px"></div></div><div id="cr-pf-status" style="font-size:11px;color:var(--text3);margin-top:4px">Parsing…</div></div>
     </div></div>
     <div class="card"><div class="card-h" style="background:linear-gradient(90deg,#276749,#38a169);color:#fff">📁 ESIC Challans</div><div class="card-b">
-      <div class="fg"><label>Employer Name (for verification)</label><input id="cr-esic-entity" placeholder="e.g. ABC PRIVATE LIMITED" style="text-transform:uppercase"></div>
+      <div class="fg"><label>Employer Name (for verification)</label><input id="cr-esic-entity" placeholder="e.g. Client Name" style="text-transform:uppercase"></div>
       <div class="fg"><label>Upload ESIC Challan PDFs</label><input type="file" id="cr-esic-files" multiple accept=".pdf" style="padding:6px;background:var(--surface2);border:2px dashed var(--border);border-radius:var(--r);cursor:pointer;width:100%"></div>
       <button class="btn btn-ok" id="cr-esic-btn" onclick="parseChallan('ESIC')" style="width:100%;justify-content:center">⚙ Parse ESIC Challans</button>
       <div id="cr-esic-progress" style="display:none;margin-top:8px"><div style="height:6px;background:var(--border-l);border-radius:3px;overflow:hidden"><div id="cr-esic-bar" style="height:100%;background:var(--ok);width:0%;transition:width .3s;border-radius:3px"></div></div><div id="cr-esic-status" style="font-size:11px;color:var(--text3);margin-top:4px">Parsing…</div></div>
@@ -1568,7 +1568,7 @@ function lTdsInterest() {
       <div class="card-h">Assessment Details</div>
       <div class="card-b">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-          <div class="fg"><label>Assessee Name</label><input id="tds-name" placeholder="e.g. ABC Pvt. Ltd."></div>
+          <div class="fg"><label>Assessee Name</label><input id="tds-name" placeholder="e.g. Client Name"></div>
           <div class="fg"><label>TAN</label><input id="tds-tan" placeholder="ABCD12345E" maxlength="10"></div>
           <div class="fg"><label>Assessment Year</label><input id="tds-ay" placeholder="2024-25"></div>
           <div class="fg"><label>Quarter</label>
@@ -1660,7 +1660,7 @@ function tdsAddRow() {
   tr.id = `tds-row-${idx}`;
   tr.innerHTML = `
     <td style="text-align:center;color:var(--text3);font-size:11px">${idx+1}</td>
-    <td>${inp('tds-party','e.g. ABC Ltd')}</td>
+    <td>${inp('tds-party','e.g. Client Name')}</td>
     <td>${inp('tds-expense','0','number','min="0"')}</td>
     <td>${inp('tds-taxable','0','number','min="0"')}</td>
     <td><select class="tds-section-${idx}" data-idx="${idx}" onchange="tdsCalcRow(${idx})"
