@@ -8,7 +8,7 @@
 import os, uuid, json, re
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, request, jsonify, g, send_file, send_from_directory
+from flask import Flask, request, jsonify, g, send_file, send_from_directory, Response
 import psycopg2
 import psycopg2.extras
 import jwt
@@ -122,10 +122,14 @@ def init_db():
         firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
         name TEXT NOT NULL, pan TEXT, gstin TEXT, address TEXT,
         contact_person TEXT, contact_phone TEXT, contact_email TEXT,
+        entity_type TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_by_id INTEGER REFERENCES users(id),
         created_at TIMESTAMP DEFAULT NOW()
     );
+
+    -- Migration safety net: add columns to pre-existing tables that predate this field
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS entity_type TEXT;
 
     CREATE TABLE IF NOT EXISTS engagements (
         id SERIAL PRIMARY KEY,
@@ -685,10 +689,12 @@ def delete_user(uid):
 # ═══════════════════════════════════════════════════════════════
 #  CLIENTS
 # ═══════════════════════════════════════════════════════════════
+CLIENT_ENTITY_TYPES = ["Company","Firm","LLP","Individual","Trust","HUF","AOP/BOI"]
+
 def _client_out(c):
     return {k: c[k] for k in
             ["id","name","pan","gstin","address","contact_person",
-             "contact_phone","contact_email","is_active","created_at"]}
+             "contact_phone","contact_email","entity_type","is_active","created_at"]}
 
 @app.route("/api/clients/")
 @login_required
@@ -702,9 +708,10 @@ def create_client():
     d = request.get_json()
     cid = qry_id(
         "INSERT INTO clients (firm_id,name,pan,gstin,address,contact_person,"
-        "contact_phone,contact_email,created_by_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        "contact_phone,contact_email,entity_type,created_by_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         (g.firm_id, d["name"], d.get("pan"), d.get("gstin"), d.get("address"),
-         d.get("contact_person"), d.get("contact_phone"), d.get("contact_email"), g.user["id"])
+         d.get("contact_person"), d.get("contact_phone"), d.get("contact_email"),
+         d.get("entity_type"), g.user["id"])
     )
     log_action(g.firm_id, g.user["id"], "CREATE_CLIENT", "Client", cid,
                f"Created: {d['name']}", request.remote_addr)
@@ -715,7 +722,7 @@ def create_client():
 def update_client(cid):
     d = request.get_json()
     fields, vals = [], []
-    for f in ["name","pan","gstin","address","contact_person","contact_phone","contact_email","is_active"]:
+    for f in ["name","pan","gstin","address","contact_person","contact_phone","contact_email","entity_type","is_active"]:
         if f in d: fields.append(f"{f}=%s"); vals.append(d[f])
     if not fields: return jsonify({"detail":"Nothing"}), 400
     vals += [cid, g.firm_id]
@@ -727,6 +734,195 @@ def update_client(cid):
 def delete_client(cid):
     execute("DELETE FROM clients WHERE id=%s AND firm_id=%s", (cid, g.firm_id))
     return jsonify({"message": "Client deleted"})
+
+# ═══════════════════════════════════════════════════════════════
+#  CLIENTS + ENGAGEMENTS — BULK EXCEL IMPORT
+# ═══════════════════════════════════════════════════════════════
+ENGAGEMENT_TYPES = ["Statutory Audit","Tax Audit","Internal Audit","GST Audit",
+                    "Due Diligence","Certification","Other"]
+
+# Keyword -> canonical engagement type, used to split combined/comma cells like
+# "Statutory & Tax Audit" or "Statutory Audit, Tax Audit" into individual engagements.
+_ENG_TYPE_KEYWORDS = [
+    ("statutory", "Statutory Audit"),
+    ("tax audit", "Tax Audit"),
+    ("internal", "Internal Audit"),
+    ("gst", "GST Audit"),
+    ("due diligence", "Due Diligence"),
+    ("certification", "Certification"),
+]
+
+def _parse_engagement_types(cell):
+    """Turn a free-text 'Type of Engagement' cell into a list of canonical engagement types.
+    Handles combined labels ('Statutory & Tax Audit'), comma/slash separated lists,
+    and falls back to 'Other' (keeping the original text) when nothing matches."""
+    if cell is None: return []
+    text = str(cell).strip()
+    if not text or text.lower() == "nan": return []
+    low = text.lower()
+    found = []
+    for kw, canonical in _ENG_TYPE_KEYWORDS:
+        if kw in low and canonical not in found:
+            found.append(canonical)
+    if found:
+        return found
+    return [f"Other:{text}"]  # preserved verbatim, no data lost
+
+def _fy_valid(fy):
+    if not fy: return False
+    fy = str(fy).strip()
+    return bool(re.match(r"^\d{4}-\d{2}$", fy))
+
+@app.route("/api/clients/import-template")
+@login_required
+def clients_import_template():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Clients Import"
+    headers = ["Name of Client","Type of Entity","PAN","Contact Person","Phone",
+               "Email","Address","Type of Engagement","Financial Year"]
+    ws.append(headers)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="2563EB")
+    ws.append(["ABC Textiles Pvt Ltd","Company","ABCDE1234F","Rajesh Shah","9876543210",
+               "rajesh@abctextiles.com","123, MG Road, Mumbai","Statutory & Tax Audit","2025-26"])
+    ws.append(["Sunrise Traders","Firm","FGHIJ5678K","Priya Mehta","9823456789",
+               "priya@sunrisetraders.com","45, Market Street, Pune","GST Audit","2025-26"])
+    for col, w in zip("ABCDEFGHI", [26,14,14,18,14,26,30,26,14]):
+        ws.column_dimensions[col].width = w
+    notes = wb.create_sheet("Instructions")
+    notes.append(["Column","Notes"])
+    notes["A1"].font = notes["B1"].font = Font(bold=True)
+    rows = [
+        ("Name of Client", "Required. Used to detect duplicates if PAN is blank."),
+        ("Type of Entity", f"One of: {', '.join(CLIENT_ENTITY_TYPES)} (optional, but recommended)."),
+        ("PAN", "Optional, but used as the primary duplicate check across re-imports."),
+        ("Contact Person / Phone / Email / Address", "All optional."),
+        ("Type of Engagement", "e.g. 'Statutory Audit', 'Tax Audit', or combined: "
+                                "'Statutory & Tax Audit' / 'Statutory Audit, Tax Audit'. "
+                                "Recognised keywords: statutory, tax audit, internal, gst, "
+                                "due diligence, certification. Anything else is kept as 'Other'."),
+        ("Financial Year", "Required to create engagements, format YYYY-YY, e.g. 2025-26."),
+    ]
+    for r in rows: notes.append(r)
+    notes.column_dimensions["A"].width = 24
+    notes.column_dimensions["B"].width = 90
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return Response(buf.read(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     headers={"Content-Disposition": "attachment; filename=clients_import_template.xlsx"})
+
+@app.route("/api/clients/import-excel", methods=["POST"])
+@login_required
+def clients_import_excel():
+    try:
+        import pandas as pd
+    except ImportError:
+        return jsonify({"detail": "pandas not installed. Contact support."}), 500
+
+    f = request.files.get("file")
+    if not f: return jsonify({"detail": "No file uploaded"}), 400
+    import io
+    try:
+        raw = f.read()
+        if f.filename.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(raw))
+        else:
+            df = pd.read_excel(io.BytesIO(raw))
+    except Exception as e:
+        return jsonify({"detail": f"Could not read file: {e}"}), 400
+
+    df.columns = [str(c).strip() for c in df.columns]
+    required_cols = ["Name of Client"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        return jsonify({"detail": f"Missing required column(s): {', '.join(missing)}"}), 400
+
+    def cell(row, col):
+        if col not in row: return None
+        v = row[col]
+        try:
+            if pd.isna(v): return None
+        except Exception: pass
+        v = str(v).strip()
+        return v if v and v.lower() != "nan" else None
+
+    existing = qry("SELECT id,name,pan FROM clients WHERE firm_id=%s", (g.firm_id,))
+    pan_index = {c["pan"].strip().upper(): c for c in existing if c["pan"]}
+    name_index = {c["name"].strip().lower(): c for c in existing}
+
+    existing_engs = qry("SELECT client_id,engagement_type,financial_year FROM engagements WHERE firm_id=%s", (g.firm_id,))
+    eng_key = lambda cid, et, fy: f"{cid}|{et}|{fy}"
+    eng_index = {eng_key(e["client_id"], e["engagement_type"], e["financial_year"]) for e in existing_engs}
+
+    clients_created, clients_skipped = 0, 0
+    engagements_created, engagements_skipped = 0, 0
+    row_errors, row_warnings = [], []
+
+    for i, row in df.iterrows():
+        rn = i + 2  # account for header row, 1-indexed
+        name = cell(row, "Name of Client")
+        if not name:
+            row_errors.append(f"Row {rn}: missing Name of Client — skipped."); continue
+
+        pan = cell(row, "PAN")
+        entity_type = cell(row, "Type of Entity")
+        if entity_type and entity_type not in CLIENT_ENTITY_TYPES:
+            row_warnings.append(f"Row {rn}: Type of Entity '{entity_type}' not in the standard list, saved as-is.")
+
+        dup = pan_index.get(pan.upper()) if pan else name_index.get(name.lower())
+        if dup:
+            clients_skipped += 1
+            row_warnings.append(f"Row {rn}: '{name}' skipped — duplicate of existing client "
+                                 f"'{dup['name']}' (matched by {'PAN' if pan else 'name'}).")
+            client_id = dup["id"]
+        else:
+            client_id = qry_id(
+                "INSERT INTO clients (firm_id,name,pan,contact_person,contact_phone,"
+                "contact_email,address,entity_type,created_by_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (g.firm_id, name, pan, cell(row,"Contact Person"), cell(row,"Phone"),
+                 cell(row,"Email"), cell(row,"Address"), entity_type, g.user["id"])
+            )
+            clients_created += 1
+            if pan: pan_index[pan.upper()] = {"id": client_id, "name": name, "pan": pan}
+            name_index[name.lower()] = {"id": client_id, "name": name, "pan": pan}
+
+        eng_cell = cell(row, "Type of Engagement")
+        if not eng_cell:
+            continue
+        fy = cell(row, "Financial Year")
+        types = _parse_engagement_types(eng_cell)
+        if types and not _fy_valid(fy):
+            row_errors.append(f"Row {rn}: engagement type(s) given but Financial Year "
+                               f"'{fy or ''}' is missing/invalid (expected YYYY-YY) — engagements not created.")
+            continue
+        for t in types:
+            display_type = t.split(":",1)[1] if t.startswith("Other:") else t
+            canonical_type = "Other" if t.startswith("Other:") else t
+            k = eng_key(client_id, canonical_type, fy)
+            if k in eng_index:
+                engagements_skipped += 1
+                continue
+            title = f"{name} – {display_type} FY {fy}"
+            qry_id(
+                "INSERT INTO engagements (firm_id,client_id,title,engagement_type,financial_year,created_by_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (g.firm_id, client_id, title, canonical_type, fy, g.user["id"])
+            )
+            eng_index.add(k)
+            engagements_created += 1
+
+    log_action(g.firm_id, g.user["id"], "IMPORT_CLIENTS", "Client", None,
+               f"Imported: {clients_created} clients, {engagements_created} engagements", request.remote_addr)
+
+    return jsonify({
+        "clients_created": clients_created, "clients_skipped": clients_skipped,
+        "engagements_created": engagements_created, "engagements_skipped": engagements_skipped,
+        "errors": row_errors, "warnings": row_warnings, "rows_processed": len(df)
+    }), 200
 
 # ═══════════════════════════════════════════════════════════════
 #  ENGAGEMENTS
@@ -1326,6 +1522,157 @@ def update_doc_entry(did):
 def delete_doc_entry(did):
     execute("DELETE FROM doc_register WHERE id=%s AND firm_id=%s", (did, g.firm_id))
     return jsonify({"message":"Deleted"})
+
+# ═══════════════════════════════════════════════════════════════
+#  DOC REGISTER — BULK EXCEL IMPORT
+# ═══════════════════════════════════════════════════════════════
+DOC_REGISTER_STATUSES = ["Received","Acknowledged","Dispatched","Returned","Pending"]
+
+@app.route("/api/doc-register/import-template")
+@login_required
+def doc_register_import_template():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Inward-Outward Import"
+    headers = ["Document Type","Date","Document Name","Category","Client Name",
+               "Received From","Reference No","Status","Remarks"]
+    ws.append(headers)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="2563EB")
+    ws.append(["Inward","2025-08-06","Bank Statement FY 2024-25","Bank Statement","ABC Textiles Pvt Ltd",
+               "Rajesh Shah","DOC/2025/001","Received","Received via email"])
+    ws.append(["Inward","2025-08-06","GST Returns Q1","GST Return","Sunrise Traders",
+               "Priya Mehta","DOC/2025/002","Pending",""])
+    for col, w in zip("ABCDEFGHI", [14,14,30,18,26,20,16,14,26]):
+        ws.column_dimensions[col].width = w
+    notes = wb.create_sheet("Instructions")
+    notes.append(["Column","Notes"])
+    notes["A1"].font = notes["B1"].font = Font(bold=True)
+    rows = [
+        ("Document Type", "Inward or Outward. Leave blank to default to Inward."),
+        ("Date", "Required, format YYYY-MM-DD (e.g. 2025-08-06)."),
+        ("Document Name", "Required."),
+        ("Category", "Optional free text, e.g. Bank Statement, GST Return, ITR Acknowledgement."),
+        ("Client Name", "Required — must exactly match an existing client's name in this firm's "
+                         "Client tab. Rows with no match are rejected and reported, not guessed."),
+        ("Received From", "For Inward rows, who sent it. (For Outward rows this becomes 'Sent To'.)"),
+        ("Reference No", "Optional."),
+        ("Status", f"One of: {', '.join(DOC_REGISTER_STATUSES)}. Leave blank to default to Received."),
+        ("Remarks", "Optional."),
+    ]
+    for r in rows: notes.append(r)
+    notes.column_dimensions["A"].width = 20
+    notes.column_dimensions["B"].width = 90
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return Response(buf.read(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     headers={"Content-Disposition": "attachment; filename=inward_register_import_template.xlsx"})
+
+@app.route("/api/doc-register/import-excel", methods=["POST"])
+@login_required
+def doc_register_import_excel():
+    try:
+        import pandas as pd
+    except ImportError:
+        return jsonify({"detail": "pandas not installed. Contact support."}), 500
+
+    f = request.files.get("file")
+    if not f: return jsonify({"detail": "No file uploaded"}), 400
+    import io
+    try:
+        raw = f.read()
+        if f.filename.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(raw))
+        else:
+            df = pd.read_excel(io.BytesIO(raw))
+    except Exception as e:
+        return jsonify({"detail": f"Could not read file: {e}"}), 400
+
+    df.columns = [str(c).strip() for c in df.columns]
+    required_cols = ["Date","Document Name","Client Name"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        return jsonify({"detail": f"Missing required column(s): {', '.join(missing)}"}), 400
+
+    def cell(row, col):
+        if col not in row: return None
+        v = row[col]
+        try:
+            if pd.isna(v): return None
+        except Exception: pass
+        v = str(v).strip()
+        return v if v and v.lower() != "nan" else None
+
+    clients = qry("SELECT id,name FROM clients WHERE firm_id=%s", (g.firm_id,))
+    client_by_name = {c["name"].strip().lower(): c for c in clients}
+
+    existing = qry("SELECT client_id,doc_name,doc_date,reference_no FROM doc_register WHERE firm_id=%s", (g.firm_id,))
+    dup_key = lambda cid, dn, dd, rn: f"{cid}|{dn.strip().lower()}|{dd}|{(rn or '').strip().lower()}"
+    dup_index = {dup_key(e["client_id"], e["doc_name"], str(e["doc_date"]), e["reference_no"]) for e in existing}
+
+    created, skipped_dup = 0, 0
+    row_errors, row_warnings = [], []
+
+    for i, row in df.iterrows():
+        rn_ = i + 2
+        doc_name = cell(row, "Document Name")
+        doc_date = cell(row, "Date")
+        client_name = cell(row, "Client Name")
+
+        if not doc_name:
+            row_errors.append(f"Row {rn_}: missing Document Name — skipped."); continue
+        if not doc_date:
+            row_errors.append(f"Row {rn_}: missing Date — skipped."); continue
+        try:
+            doc_date = pd.to_datetime(doc_date).strftime("%Y-%m-%d")
+        except Exception:
+            row_errors.append(f"Row {rn_}: could not parse Date '{doc_date}' — skipped."); continue
+        if not client_name:
+            row_errors.append(f"Row {rn_}: missing Client Name — skipped."); continue
+        client = client_by_name.get(client_name.strip().lower())
+        if not client:
+            row_errors.append(f"Row {rn_}: Client '{client_name}' not found in Client tab — skipped."); continue
+
+        doc_type = cell(row, "Document Type") or "Inward"
+        if doc_type not in ("Inward","Outward"):
+            row_warnings.append(f"Row {rn_}: Document Type '{doc_type}' not recognised, defaulted to Inward.")
+            doc_type = "Inward"
+
+        status = cell(row, "Status") or "Received"
+        if status not in DOC_REGISTER_STATUSES:
+            row_warnings.append(f"Row {rn_}: Status '{status}' not recognised, defaulted to Received.")
+            status = "Received"
+
+        reference_no = cell(row, "Reference No")
+        k = dup_key(client["id"], doc_name, doc_date, reference_no)
+        if k in dup_index:
+            skipped_dup += 1
+            row_warnings.append(f"Row {rn_}: '{doc_name}' for {client['name']} on {doc_date} looks like a duplicate — skipped.")
+            continue
+
+        from_to = cell(row, "Received From")
+        qry_id(
+            "INSERT INTO doc_register (firm_id,client_id,doc_type,doc_name,doc_category,doc_date,"
+            "received_from,sent_to,reference_no,status,remarks,created_by_id) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (g.firm_id, client["id"], doc_type, doc_name, cell(row,"Category"), doc_date,
+             from_to if doc_type == "Inward" else None,
+             from_to if doc_type == "Outward" else None,
+             reference_no, status, cell(row,"Remarks"), g.user["id"])
+        )
+        dup_index.add(k)
+        created += 1
+
+    log_action(g.firm_id, g.user["id"], "IMPORT_DOC_REGISTER", "DocRegister", None,
+               f"Imported: {created} document entries", request.remote_addr)
+
+    return jsonify({
+        "created": created, "skipped_duplicates": skipped_dup,
+        "errors": row_errors, "warnings": row_warnings, "rows_processed": len(df)
+    }), 200
 
 # ═══════════════════════════════════════════════════════════════
 #  COMPLIANCE CALENDAR
