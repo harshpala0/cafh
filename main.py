@@ -113,8 +113,23 @@ def init_db():
             CHECK(role IN ('Admin','Team Leader','Member','Client')),
         is_active BOOLEAN DEFAULT TRUE,
         client_id INTEGER,
+        can_switch_fy BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(firm_id, username)
+    );
+
+    -- Migration safety net for pre-existing tables that predate this field
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS can_switch_fy BOOLEAN DEFAULT FALSE;
+
+    CREATE TABLE IF NOT EXISTS fy_access_requests (
+        id SERIAL PRIMARY KEY,
+        firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        requested_fy TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending','Approved','Denied')),
+        requested_at TIMESTAMP DEFAULT NOW(),
+        resolved_by_id INTEGER REFERENCES users(id),
+        resolved_at TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS clients (
@@ -374,7 +389,42 @@ def log_action(firm_id, user_id, action, entity_type=None, entity_id=None, detai
 
 def _user_out(u):
     return {k: u[k] for k in
-            ["id","username","full_name","email","role","is_active","client_id","created_at","firm_id"]}
+            ["id","username","full_name","email","role","is_active","client_id","created_at","firm_id","can_switch_fy"]}
+
+# ═══════════════════════════════════════════════════════════════
+#  FINANCIAL YEAR SCOPING (India FY: Apr 1 – Mar 31)
+# ═══════════════════════════════════════════════════════════════
+def current_fy():
+    today = datetime.now()
+    y = today.year
+    return f"{y}-{str(y+1)[2:]}" if today.month >= 4 else f"{y-1}-{str(y)[2:]}"
+
+def fy_of_date(d):
+    """Return the India FY string ('YYYY-YY') a given date falls in."""
+    if d is None: return None
+    if isinstance(d, str):
+        try: d = datetime.fromisoformat(str(d)[:10])
+        except Exception: return None
+    y = d.year
+    return f"{y}-{str(y+1)[2:]}" if d.month >= 4 else f"{y-1}-{str(y)[2:]}"
+
+def resolve_fy():
+    """Read the ?fy= query param for FY-scoped list endpoints and enforce access.
+    Returns (fy, None) on success, or (None, (json_response, status)) if the
+    caller isn't allowed to view a financial year other than the current one."""
+    requested = (request.args.get("fy") or "").strip() or current_fy()
+    if requested != current_fy() and g.user["role"] != "Admin" and not g.user.get("can_switch_fy"):
+        return None, (jsonify({"detail": "You don't have permission to view other financial years yet. "
+                                          "Ask your Admin for access."}), 403)
+    return requested, None
+
+def fy_access_denied(fy):
+    """For single-record GETs: returns a (json, status) 403 tuple if the caller can't
+    view a record tagged with this financial year, else None."""
+    if fy and fy != current_fy() and g.user["role"] != "Admin" and not g.user.get("can_switch_fy"):
+        return jsonify({"detail": "You don't have permission to view other financial years yet. "
+                                   "Ask your Admin for access."}), 403
+    return None
 
 # ═══════════════════════════════════════════════════════════════
 #  SERVE FRONTEND
@@ -607,25 +657,29 @@ def auth_me():
 @app.route("/api/dashboard/")
 @login_required
 def dashboard():
+    fy, err = resolve_fy()
+    if err: return err
     fid = g.firm_id
     uid = g.user["id"]
     def cnt(sql, params=()):
         return qry(sql, params, one=True)["count"]
     return jsonify({
+        "financial_year":     fy,
         "total_clients":      cnt("SELECT COUNT(*) as count FROM clients WHERE firm_id=%s", (fid,)),
-        "total_engagements":  cnt("SELECT COUNT(*) as count FROM engagements WHERE firm_id=%s", (fid,)),
-        "total_tasks":        cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s", (fid,)),
-        "pending_tasks":      cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status='Pending'", (fid,)),
-        "in_progress_tasks":  cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status='In Progress'", (fid,)),
-        "completed_tasks":    cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status='Completed'", (fid,)),
-        "under_review_tasks": cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status='Under Review'", (fid,)),
-        "approved_tasks":     cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status='Approved'", (fid,)),
-        "rejected_tasks":     cnt("SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status='Rejected'", (fid,)),
-        "open_queries":       cnt("SELECT COUNT(*) as count FROM queries WHERE firm_id=%s AND status='Open'", (fid,)),
+        "total_engagements":  cnt("SELECT COUNT(*) as count FROM engagements WHERE firm_id=%s AND financial_year=%s", (fid, fy)),
+        "total_tasks":        cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s", (fid, fy)),
+        "pending_tasks":      cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s AND t.status='Pending'", (fid, fy)),
+        "in_progress_tasks":  cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s AND t.status='In Progress'", (fid, fy)),
+        "completed_tasks":    cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s AND t.status='Completed'", (fid, fy)),
+        "under_review_tasks": cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s AND t.status='Under Review'", (fid, fy)),
+        "approved_tasks":     cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s AND t.status='Approved'", (fid, fy)),
+        "rejected_tasks":     cnt("SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id WHERE t.firm_id=%s AND e.financial_year=%s AND t.status='Rejected'", (fid, fy)),
+        "open_queries":       cnt("SELECT COUNT(*) as count FROM queries q JOIN engagements e ON q.engagement_id=e.id WHERE q.firm_id=%s AND e.financial_year=%s AND q.status='Open'", (fid, fy)),
         "my_pending_tasks":   cnt(
-            "SELECT COUNT(*) as count FROM tasks WHERE firm_id=%s AND status IN ('Pending','In Progress') "
-            "AND (assignee_id=%s OR id IN (SELECT task_id FROM task_assignees WHERE user_id=%s))",
-            (fid, uid, uid)
+            "SELECT COUNT(*) as count FROM tasks t JOIN engagements e ON t.engagement_id=e.id "
+            "WHERE t.firm_id=%s AND e.financial_year=%s AND t.status IN ('Pending','In Progress') "
+            "AND (t.assignee_id=%s OR t.id IN (SELECT task_id FROM task_assignees WHERE user_id=%s))",
+            (fid, fy, uid, uid)
         ),
     })
 
@@ -661,7 +715,7 @@ def create_user():
 def update_user(uid):
     d = request.get_json()
     fields, vals = [], []
-    for f in ["full_name","email","role","is_active","client_id"]:
+    for f in ["full_name","email","role","is_active","client_id","can_switch_fy"]:
         if f in d:
             fields.append(f"{f}=%s")
             vals.append(d[f])
@@ -685,6 +739,77 @@ def delete_user(uid):
         return jsonify({"detail": "Cannot delete own account"}), 400
     execute("DELETE FROM users WHERE id=%s AND firm_id=%s", (uid, g.firm_id))
     return jsonify({"message": "User deleted"})
+
+# ═══════════════════════════════════════════════════════════════
+#  FINANCIAL YEAR SELECTOR + ACCESS REQUESTS
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/fy/current")
+@login_required
+def fy_current():
+    return jsonify({
+        "current_fy": current_fy(),
+        "can_switch_fy": g.user["role"] == "Admin" or bool(g.user.get("can_switch_fy")),
+        "is_admin": g.user["role"] == "Admin",
+    })
+
+@app.route("/api/fy/available")
+@login_required
+def fy_available():
+    cur = current_fy()
+    start_yr = int(cur.split("-")[0])
+    fys = {r["financial_year"] for r in
+           qry("SELECT DISTINCT financial_year FROM engagements WHERE firm_id=%s AND financial_year IS NOT NULL",
+               (g.firm_id,))}
+    for offset in range(-5, 2):
+        y = start_yr + offset
+        fys.add(f"{y}-{str(y+1)[2:]}")
+    return jsonify(sorted(fys))
+
+@app.route("/api/fy/access-requests")
+@require_role("Admin")
+def list_fy_requests():
+    rows = qry(
+        "SELECT r.*, u.full_name, u.username FROM fy_access_requests r "
+        "JOIN users u ON u.id=r.user_id WHERE r.firm_id=%s AND r.status='Pending' "
+        "ORDER BY r.requested_at DESC", (g.firm_id,))
+    return jsonify(rows)
+
+@app.route("/api/fy/access-requests", methods=["POST"])
+@login_required
+def create_fy_request():
+    if g.user["role"] == "Admin":
+        return jsonify({"detail": "Admins already have full access to all financial years"}), 400
+    d = request.get_json() or {}
+    fy = (d.get("financial_year") or "").strip()
+    if not fy: return jsonify({"detail": "financial_year required"}), 400
+    if qry("SELECT id FROM fy_access_requests WHERE firm_id=%s AND user_id=%s AND status='Pending'",
+           (g.firm_id, g.user["id"]), one=True):
+        return jsonify({"detail": "You already have a pending request awaiting Admin approval."}), 400
+    rid = qry_id(
+        "INSERT INTO fy_access_requests (firm_id,user_id,requested_fy,status) VALUES (%s,%s,%s,'Pending')",
+        (g.firm_id, g.user["id"], fy))
+    log_action(g.firm_id, g.user["id"], "REQUEST_FY_ACCESS", "FYAccessRequest", rid,
+               f"Requested access to FY {fy}", request.remote_addr)
+    return jsonify({"id": rid, "message": "Request sent to your Admin for approval."}), 201
+
+@app.route("/api/fy/access-requests/<int:rid>/approve", methods=["POST"])
+@require_role("Admin")
+def approve_fy_request(rid):
+    req = qry("SELECT * FROM fy_access_requests WHERE id=%s AND firm_id=%s", (rid, g.firm_id), one=True)
+    if not req: return jsonify({"detail": "Not found"}), 404
+    execute("UPDATE fy_access_requests SET status='Approved',resolved_by_id=%s,resolved_at=NOW() WHERE id=%s",
+            (g.user["id"], rid))
+    execute("UPDATE users SET can_switch_fy=TRUE WHERE id=%s", (req["user_id"],))
+    log_action(g.firm_id, g.user["id"], "APPROVE_FY_ACCESS", "FYAccessRequest", rid,
+               f"Approved FY access for user {req['user_id']}", request.remote_addr)
+    return jsonify({"message": "Approved — the user can now switch financial years."})
+
+@app.route("/api/fy/access-requests/<int:rid>/deny", methods=["POST"])
+@require_role("Admin")
+def deny_fy_request(rid):
+    execute("UPDATE fy_access_requests SET status='Denied',resolved_by_id=%s,resolved_at=NOW() "
+            "WHERE id=%s AND firm_id=%s", (g.user["id"], rid, g.firm_id))
+    return jsonify({"message": "Denied"})
 
 # ═══════════════════════════════════════════════════════════════
 #  CLIENTS
@@ -937,14 +1062,17 @@ def _eng_full(e):
 @app.route("/api/engagements/")
 @login_required
 def list_engagements():
+    fy, err = resolve_fy()
+    if err: return err
     fid = g.firm_id
     if g.user["role"] == "Client":
         cid = g.user.get("client_id")
         if not cid: return jsonify([])
-        rows = qry("SELECT * FROM engagements WHERE firm_id=%s AND client_id=%s "
-                   "ORDER BY created_at DESC", (fid, cid))
+        rows = qry("SELECT * FROM engagements WHERE firm_id=%s AND client_id=%s AND financial_year=%s "
+                   "ORDER BY created_at DESC", (fid, cid, fy))
     else:
-        rows = qry("SELECT * FROM engagements WHERE firm_id=%s ORDER BY created_at DESC", (fid,))
+        rows = qry("SELECT * FROM engagements WHERE firm_id=%s AND financial_year=%s ORDER BY created_at DESC",
+                   (fid, fy))
     return jsonify([_eng_full(e) for e in rows])
 
 @app.route("/api/engagements/<int:eid>")
@@ -953,6 +1081,8 @@ def get_engagement(eid):
     e = qry("SELECT * FROM engagements WHERE id=%s AND firm_id=%s",
             (eid, g.firm_id), one=True)
     if not e: return jsonify({"detail":"Not found"}), 404
+    err = fy_access_denied(e["financial_year"])
+    if err: return err
     return jsonify(_eng_full(e))
 
 @app.route("/api/engagements/", methods=["POST"])
@@ -1030,13 +1160,29 @@ def _sync_assignees(tid, user_ids):
 @app.route("/api/tasks/")
 @login_required
 def list_tasks():
-    sql = "SELECT * FROM tasks WHERE firm_id=%s"
-    params = [g.firm_id]
-    if request.args.get("engagement_id"):
-        sql += " AND engagement_id=%s"; params.append(request.args["engagement_id"])
+    eng_id = request.args.get("engagement_id")
+    if eng_id:
+        # Scoped to one engagement: authorize against that engagement's own FY,
+        # regardless of the globally-selected FY (so opening an already-permitted
+        # engagement's detail page always shows its tasks correctly).
+        eng = qry("SELECT financial_year FROM engagements WHERE id=%s AND firm_id=%s", (eng_id, g.firm_id), one=True)
+        if not eng: return jsonify([])
+        err = fy_access_denied(eng["financial_year"])
+        if err: return err
+        sql = "SELECT * FROM tasks WHERE firm_id=%s AND engagement_id=%s"
+        params = [g.firm_id, eng_id]
+        if request.args.get("status"):
+            sql += " AND status=%s"; params.append(request.args["status"])
+        sql += " ORDER BY created_at DESC"
+        return jsonify([_task_full(t) for t in qry(sql, params)])
+    fy, err = resolve_fy()
+    if err: return err
+    sql = ("SELECT t.* FROM tasks t JOIN engagements e ON t.engagement_id=e.id "
+           "WHERE t.firm_id=%s AND e.financial_year=%s")
+    params = [g.firm_id, fy]
     if request.args.get("status"):
-        sql += " AND status=%s"; params.append(request.args["status"])
-    sql += " ORDER BY created_at DESC"
+        sql += " AND t.status=%s"; params.append(request.args["status"])
+    sql += " ORDER BY t.created_at DESC"
     return jsonify([_task_full(t) for t in qry(sql, params)])
 
 @app.route("/api/tasks/<int:tid>")
@@ -1044,6 +1190,9 @@ def list_tasks():
 def get_task(tid):
     t = qry("SELECT * FROM tasks WHERE id=%s AND firm_id=%s", (tid, g.firm_id), one=True)
     if not t: return jsonify({"detail":"Not found"}), 404
+    eng = qry("SELECT financial_year FROM engagements WHERE id=%s", (t["engagement_id"],), one=True)
+    err = fy_access_denied(eng["financial_year"] if eng else None)
+    if err: return err
     return jsonify(_task_full(t))
 
 @app.route("/api/tasks/", methods=["POST"])
@@ -1159,13 +1308,26 @@ def _query_full(q):
 @app.route("/api/queries/")
 @login_required
 def list_queries():
-    sql = "SELECT * FROM queries WHERE firm_id=%s"
-    params = [g.firm_id]
-    if request.args.get("engagement_id"):
-        sql += " AND engagement_id=%s"; params.append(request.args["engagement_id"])
+    eng_id = request.args.get("engagement_id")
+    if eng_id:
+        eng = qry("SELECT financial_year FROM engagements WHERE id=%s AND firm_id=%s", (eng_id, g.firm_id), one=True)
+        if not eng: return jsonify([])
+        err = fy_access_denied(eng["financial_year"])
+        if err: return err
+        sql = "SELECT * FROM queries WHERE firm_id=%s AND engagement_id=%s"
+        params = [g.firm_id, eng_id]
+        if request.args.get("status"):
+            sql += " AND status=%s"; params.append(request.args["status"])
+        sql += " ORDER BY sr_no"
+        return jsonify([_query_full(q) for q in qry(sql, params)])
+    fy, err = resolve_fy()
+    if err: return err
+    sql = ("SELECT q.* FROM queries q JOIN engagements e ON q.engagement_id=e.id "
+           "WHERE q.firm_id=%s AND e.financial_year=%s")
+    params = [g.firm_id, fy]
     if request.args.get("status"):
-        sql += " AND status=%s"; params.append(request.args["status"])
-    sql += " ORDER BY sr_no"
+        sql += " AND q.status=%s"; params.append(request.args["status"])
+    sql += " ORDER BY q.sr_no"
     return jsonify([_query_full(q) for q in qry(sql, params)])
 
 @app.route("/api/queries/", methods=["POST"])
@@ -1415,22 +1577,28 @@ def _inv_full(inv):
 @app.route("/api/invoices/")
 @login_required
 def list_invoices():
+    fy, err = resolve_fy()
+    if err: return err
     sql = "SELECT * FROM invoices WHERE firm_id=%s"
     params = [g.firm_id]
     if request.args.get("payment_status"):
         sql += " AND payment_status=%s"; params.append(request.args["payment_status"])
     sql += " ORDER BY invoice_date DESC"
-    return jsonify([_inv_full(i) for i in qry(sql, params)])
+    rows = [i for i in qry(sql, params) if fy_of_date(i["invoice_date"]) == fy]
+    return jsonify([_inv_full(i) for i in rows])
 
 @app.route("/api/invoices/summary/")
 @login_required
 def invoice_summary():
-    row = qry(
-        "SELECT COALESCE(SUM(total_amount),0) as total_billed, "
-        "COALESCE(SUM(CASE WHEN payment_status='Paid' THEN total_amount ELSE 0 END),0) as total_received, "
-        "COALESCE(SUM(CASE WHEN payment_status='Unpaid' THEN total_amount ELSE 0 END),0) as total_outstanding, "
-        "COUNT(*) as total_invoices FROM invoices WHERE firm_id=%s", (g.firm_id,), one=True)
-    return jsonify(row)
+    fy, err = resolve_fy()
+    if err: return err
+    rows = qry("SELECT * FROM invoices WHERE firm_id=%s", (g.firm_id,))
+    rows = [i for i in rows if fy_of_date(i["invoice_date"]) == fy]
+    total_billed = sum(i["total_amount"] for i in rows)
+    total_received = sum(i["total_amount"] for i in rows if i["payment_status"] == "Paid")
+    total_outstanding = sum(i["total_amount"] for i in rows if i["payment_status"] == "Unpaid")
+    return jsonify({"total_billed": total_billed, "total_received": total_received,
+                     "total_outstanding": total_outstanding, "total_invoices": len(rows)})
 
 @app.route("/api/invoices/", methods=["POST"])
 @require_role("Admin","Team Leader")
@@ -1485,10 +1653,13 @@ def delete_invoice(iid):
 @app.route("/api/doc-register/")
 @login_required
 def list_doc_register():
+    fy, err = resolve_fy()
+    if err: return err
     sql = "SELECT dr.*, c.name as client_name, e.title as engagement_title FROM doc_register dr " \
           "LEFT JOIN clients c ON dr.client_id=c.id LEFT JOIN engagements e ON dr.engagement_id=e.id " \
           "WHERE dr.firm_id=%s ORDER BY dr.doc_date DESC"
-    return jsonify(qry(sql, (g.firm_id,)))
+    rows = [r for r in qry(sql, (g.firm_id,)) if fy_of_date(r["doc_date"]) == fy]
+    return jsonify(rows)
 
 @app.route("/api/doc-register/", methods=["POST"])
 @login_required
@@ -1680,6 +1851,8 @@ def doc_register_import_excel():
 @app.route("/api/compliance-calendar/")
 @login_required
 def list_compliance():
+    fy, err = resolve_fy()
+    if err: return err
     sql = "SELECT * FROM compliance_calendar WHERE firm_id=%s"
     params = [g.firm_id]
     if request.args.get("category"):
@@ -1687,7 +1860,8 @@ def list_compliance():
     if request.args.get("status"):
         sql += " AND status=%s"; params.append(request.args["status"])
     sql += " ORDER BY due_date"
-    return jsonify(qry(sql, params))
+    rows = [r for r in qry(sql, params) if (r["financial_year"] or fy_of_date(r["due_date"])) == fy]
+    return jsonify(rows)
 
 @app.route("/api/compliance-calendar/", methods=["POST"])
 @require_role("Admin","Team Leader")
