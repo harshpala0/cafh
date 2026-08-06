@@ -266,6 +266,17 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
     <div class="ph-right">
       <div id="pa"></div>
       <div style="position:relative">
+        <button id="fy-btn" onclick="toggleFyPanel()" title="Financial Year" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--surface2);border:1px solid var(--border-l);border-radius:20px;font-size:12px;font-weight:600;color:var(--icai-navy);cursor:pointer">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span id="fy-label">FY --</span>
+          <span id="fy-req-badge" style="display:none;background:var(--err);color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;align-items:center;justify-content:center;line-height:1;margin-left:2px"></span>
+        </button>
+        <div id="fy-panel" style="display:none;position:absolute;right:0;top:40px;width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh-lg);z-index:500;max-height:400px;overflow-y:auto">
+          <div style="padding:12px 16px;font-weight:700;font-size:13px;color:var(--icai-navy);border-bottom:1px solid var(--border-l);background:var(--surface2);border-radius:var(--r-lg) var(--r-lg) 0 0">Financial Year</div>
+          <div id="fy-list" style="padding:6px"></div>
+        </div>
+      </div>
+      <div style="position:relative">
         <button id="alert-btn" onclick="toggleAlerts()" title="Alerts">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
           <span id="alert-count" style="display:none;position:absolute;top:2px;right:2px;background:var(--err);color:#fff;border-radius:50%;width:17px;height:17px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1"></span>
@@ -388,6 +399,73 @@ function toast(m,t='ok'){const e=document.createElement('div');e.className=`tt t
 function oM(t,b,f=''){document.getElementById('mt').textContent=t;document.getElementById('mb').innerHTML=b;document.getElementById('mf').innerHTML=f;document.getElementById('mo').classList.add('sh');}
 function cM(){document.getElementById('mo').classList.remove('sh');}
 
+/* ── FINANCIAL YEAR SELECTOR ── */
+let FY='',FY_META={current_fy:'',can_switch_fy:false,is_admin:false},FY_LIST=[];
+async function initFY(){
+  try{FY_META=await api('/api/fy/current');FY=FY_META.current_fy;}
+  catch(e){FY_META={current_fy:'',can_switch_fy:false,is_admin:false};}
+  try{FY_LIST=await api('/api/fy/available');}catch(e){FY_LIST=FY?[FY]:[];}
+  renderFySelector();
+  if(FY_META.is_admin)refreshFyRequestBadge();
+}
+function renderFySelector(){
+  const lb=document.getElementById('fy-label');if(lb)lb.textContent=`FY ${FY||'--'}`;
+  const list=document.getElementById('fy-list');if(!list)return;
+  const opts=FY_LIST.length?FY_LIST:[FY_META.current_fy].filter(Boolean);
+  const lockIcon='<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>';
+  list.innerHTML=opts.map(f=>{
+    const locked=(f!==FY_META.current_fy)&&!FY_META.can_switch_fy;
+    return `<div onclick="pickFy('${f}',${locked})" style="padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:6px;${f===FY?'background:var(--surface2);font-weight:700':''}">
+      <span>FY ${f}${f===FY_META.current_fy?' (current)':''}</span>${locked?lockIcon:''}
+    </div>`;
+  }).join('') + (FY_META.is_admin ? `<div style="border-top:1px solid var(--border-l);margin-top:6px;padding-top:6px"><button class="btn btn-o btn-xs" style="width:100%" onclick="openFyRequestsPanel()">Pending FY Access Requests</button></div>` : '');
+}
+function toggleFyPanel(){const p=document.getElementById('fy-panel');if(p)p.style.display=p.style.display==='none'?'block':'none';}
+document.addEventListener('click',function(e){const panel=document.getElementById('fy-panel');const btn=document.getElementById('fy-btn');if(panel&&btn&&!panel.contains(e.target)&&!btn.contains(e.target))panel.style.display='none';});
+async function pickFy(f,locked){
+  document.getElementById('fy-panel').style.display='none';
+  if(f===FY)return;
+  if(locked){
+    if(confirm(`You don't have access to FY ${f} yet. Send a request to your Admin for approval?`)){
+      try{await api('/api/fy/access-requests',{method:'POST',body:JSON.stringify({financial_year:f})});toast('Request sent to Admin for approval');}
+      catch(e){toast(e.message,'err');}
+    }
+    return;
+  }
+  FY=f;renderFySelector();
+  const cur=document.querySelector('.ni.on')?.dataset.p||'dashboard';
+  nav(cur);
+}
+async function refreshFyRequestBadge(){
+  try{
+    const reqs=await api('/api/fy/access-requests');
+    S.fyRequests=reqs;
+    const badge=document.getElementById('fy-req-badge');
+    if(!badge)return;
+    if(reqs.length){badge.style.display='flex';badge.textContent=reqs.length;}
+    else{badge.style.display='none';}
+  }catch(e){}
+}
+function openFyRequestsPanel(){
+  document.getElementById('fy-panel').style.display='none';
+  const reqs=S.fyRequests||[];
+  oM('Financial Year Access Requests', reqs.length?reqs.map(r=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-l)">
+      <div><strong>${r.full_name}</strong> (${r.username})<br><span style="font-size:12px;color:var(--text2)">Requesting access to FY ${r.requested_fy}</span></div>
+      <div style="display:flex;gap:6px"><button class="btn btn-xs btn-p" onclick="resolveFyRequest(${r.id},'approve')">Approve</button><button class="btn btn-xs btn-o" onclick="resolveFyRequest(${r.id},'deny')">Deny</button></div>
+    </div>`).join(''):'<p style="color:var(--text2);font-size:13px">No pending requests.</p>',
+    `<button class="btn btn-o" onclick="cM()">Close</button>`);
+}
+async function resolveFyRequest(id,action){
+  try{await api(`/api/fy/access-requests/${id}/${action}`,{method:'POST'});toast(action==='approve'?'Approved — user can now switch financial years.':'Request denied.');await refreshFyRequestBadge();openFyRequestsPanel();}
+  catch(e){toast(e.message,'err');}
+}
+/** Appends the active FY as a query param for FY-scoped list endpoints. */
+function fyQ(url,extra){
+  const sep=url.includes('?')?'&':'?';
+  return `${url}${sep}fy=${encodeURIComponent(FY)}${extra?('&'+extra):''}`;
+}
+
 /* ── AUTH ── */
 async function doLogin(){
   const u=document.getElementById('lu').value.trim(),p=document.getElementById('lp').value;
@@ -400,6 +478,7 @@ async function doLogin(){
     T=d.access_token;U=d.user;
     localStorage.setItem('at',T);localStorage.setItem('au',JSON.stringify(U));
     _patchedShowApp();
+    await initFY();
     setTimeout(()=>nav(U.role==='Client'?'engagements':'dashboard'),100);
   }catch(e){
     document.getElementById('lerr').textContent='Cannot connect to server. Is it running?';
@@ -445,7 +524,8 @@ function nav(p){
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   document.querySelector(`.ni[data-p="${p}"]`)?.classList.add('on');
   const t={dashboard:'Dashboard',clients:'Clients',engagements:'Engagements',tasks:'Tasks',queries:'Query Sheet',programs:'Audit Programs',workpapers:'Audit Working Papers',users:'User Management',logs:'Audit Logs'};
-  document.getElementById('pt').textContent=t[p]||p;document.getElementById('pa').innerHTML='';
+  const fyScoped=['dashboard','engagements','tasks','queries','invoices','docregister','calendar'];
+  document.getElementById('pt').textContent=(t[p]||p)+(fyScoped.includes(p)&&FY?` — FY ${FY}`:'');document.getElementById('pa').innerHTML='';
   ({dashboard:lDash,clients:lClients,engagements:lEng,tasks:lTasks,queries:lQueries,programs:lProg,users:lUsers,logs:lLogs,invoices:lInvoices,docregister:lDocReg,calendar:lCalendar,reports:lReports,taxaudit:lTaxAudit,challanreader:lChallanReader,workpapers:lWorkpapers,firmsettings:lFirmSettings,tdsinterest:lTdsInterest})[p]?.();
 }
 
@@ -464,7 +544,7 @@ async function initApp(){
     const r=await fetch('/api/auth/me',{headers:{'Authorization':`Bearer ${T}`}});
     if(r.ok){
       U=await r.json();localStorage.setItem('au',JSON.stringify(U));
-      _patchedShowApp();nav(U.role==='Client'?'engagements':'dashboard');
+      _patchedShowApp();await initFY();nav(U.role==='Client'?'engagements':'dashboard');
     }else{
       T='';U=null;localStorage.removeItem('at');localStorage.removeItem('au');showLoginScreen();
     }
@@ -474,9 +554,9 @@ initApp();
 
 /* ── DASHBOARD ── */
 async function lDash(){
-  const d=await api('/api/dashboard/');
+  const d=await api(fyQ('/api/dashboard/'));
   let alerts=[];try{alerts=await api('/api/alerts/');}catch(e){}
-  let invSum={};try{invSum=await api('/api/invoices/summary/');}catch(e){}
+  let invSum={};try{invSum=await api(fyQ('/api/invoices/summary/'));}catch(e){}
   const overdue=alerts.filter(a=>a.type==='overdue_task').length;
   document.getElementById('pb').innerHTML=`
     <div class="sg">
@@ -591,7 +671,7 @@ async function runImport(kind){
 /* ── ENGAGEMENTS ── */
 async function lEng(){
   const isClient=U.role==='Client';
-  S.engs=await api('/api/engagements/');
+  S.engs=await api(fyQ('/api/engagements/'));
   if(!isClient){S.clients=await api('/api/clients/');S.users=await api('/api/users/');}
   document.getElementById('pa').innerHTML=isClient?`<span style="font-size:13px;color:var(--text2)">👁 View Only</span>`:`<button class="btn btn-p" onclick="efm()">+ New Engagement</button>`;
   document.getElementById('pb').innerHTML=S.engs.length?`<div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Title</th><th>Type</th><th>FY</th><th>Period</th><th>Status</th><th>Actions</th></tr></thead><tbody>
@@ -604,7 +684,7 @@ function efm(id=null){
   const uo=S.users.map(u=>`<option value="${u.id}" ${u.id===e.team_leader_id?'selected':''}>${u.full_name} (${u.role})</option>`).join('');
   const ty=['Statutory Audit','Tax Audit','Internal Audit','GST Audit','Due Diligence','Certification','Other'].map(t=>`<option ${t===e.engagement_type?'selected':''}>${t}</option>`).join('');
   const y=new Date().getFullYear();
-  const fy=Array.from({length:5},(_,i)=>{const v=`${y-2+i}-${(y-1+i).toString().slice(2)}`;return`<option ${v===e.financial_year?'selected':''}>${v}</option>`;}).join('');
+  const fy=Array.from({length:5},(_,i)=>{const v=`${y-2+i}-${(y-1+i).toString().slice(2)}`;return`<option ${v===(e.financial_year||FY)?'selected':''}>${v}</option>`;}).join('');
   oM(id?'Edit Engagement':'New Engagement',`
     <div class="fg"><label>Client *</label><select id="ec">${co}</select></div>
     <div class="fg"><label>Title *</label><input id="et" value="${e.title||''}"></div>
@@ -959,7 +1039,7 @@ async function confirmDayLog(lid,eid){
 
 /* ── TASKS ── */
 async function lTasks(){
-  S.tasks=await api('/api/tasks/');S.engs=S.engs||await api('/api/engagements/');
+  S.tasks=await api(fyQ('/api/tasks/'));S.engs=await api(fyQ('/api/engagements/'));
   document.getElementById('pa').innerHTML='';
   document.getElementById('pb').innerHTML=`
     <div class="toolbar"><select id="tfe" onchange="fTask()"><option value="">All Engagements</option>${(S.engs||[]).map(e=>`<option value="${e.id}">${e.client?.name} - ${e.title}</option>`).join('')}</select>
@@ -969,7 +1049,7 @@ async function lTasks(){
 }
 function rTT(tasks){document.getElementById('ttc').innerHTML=tasks.length?`<table class="dt"><thead><tr><th>ID</th><th>Task</th><th>Area</th><th>Assignee</th><th>Status</th><th>Priority</th><th>Due</th><th>Actions</th></tr></thead><tbody>${tasks.map(t=>`<tr><td>${t.id}</td><td style="max-width:260px">${t.title}</td><td>${t.area||'-'}</td><td>${(t.assignees&&t.assignees.length?t.assignees.map(a=>a.full_name).join(', '):'-')}</td><td>${sb(t.status)}</td><td>${pb(t.priority)}</td><td>${fd(t.due_date)}</td><td><button class="btn btn-xs btn-g" onclick="oTask(${t.id})">Open</button> <button class="btn btn-xs btn-err" onclick="dlTask(${t.id})">Delete</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><p>No tasks.</p></div>';}
 async function dlTask(id){if(!confirm('Delete this task?'))return;try{await api(`/api/tasks/${id}`,{method:'DELETE'});toast('Deleted');fTask();}catch(e){toast(e.message,'err');}}
-async function fTask(){let u='/api/tasks/?';const e=document.getElementById('tfe').value,s=document.getElementById('tfs').value;if(e)u+=`engagement_id=${e}&`;if(s)u+=`status=${s}&`;rTT(await api(u));}
+async function fTask(){let u=fyQ('/api/tasks/');const e=document.getElementById('tfe').value,s=document.getElementById('tfs').value;if(e)u+=`&engagement_id=${e}`;if(s)u+=`&status=${s}`;rTT(await api(u));}
 function tfm(eid,tid=null){
   const t=tid&&S.tasks?S.tasks.find(x=>x.id===tid)||{}:{};
   const selIds=new Set(t.assignee_ids||[]);
@@ -1073,7 +1153,11 @@ async function dlProg(id){if(!confirm('Delete this programme?'))return;try{await
 async function lUsers(){
   S.users=await api('/api/users/');S.clients=S.clients||await api('/api/clients/');
   document.getElementById('pa').innerHTML=U.role==='Admin'?`<button class="btn btn-p" onclick="ufm()">+ New User</button>`:'';
-  document.getElementById('pb').innerHTML=`<div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Client</th><th>Status</th><th>Actions</th></tr></thead><tbody>${S.users.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.full_name}</td><td>${u.email||'-'}</td><td>${rb(u.role)}</td><td>${u.client_id?(S.clients.find(c=>c.id===u.client_id)?.name||u.client_id):'-'}</td><td>${u.is_active?'<span class="bg bg-app">Active</span>':'<span class="bg bg-rej">Inactive</span>'}</td><td>${U.role==='Admin'?`<button class="btn btn-xs btn-o" onclick="ufm(${u.id})">Edit</button> <button class="btn btn-xs btn-o" onclick="rpwd(${u.id})">Reset</button> <button class="btn btn-xs btn-err" onclick="dlUser(${u.id})">Delete</button>`:''}</td></tr>`).join('')}</tbody></table></div></div>`;
+  document.getElementById('pb').innerHTML=`<div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Client</th><th>Status</th><th>FY Access</th><th>Actions</th></tr></thead><tbody>${S.users.map(u=>`<tr><td><strong>${u.username}</strong></td><td>${u.full_name}</td><td>${u.email||'-'}</td><td>${rb(u.role)}</td><td>${u.client_id?(S.clients.find(c=>c.id===u.client_id)?.name||u.client_id):'-'}</td><td>${u.is_active?'<span class="bg bg-app">Active</span>':'<span class="bg bg-rej">Inactive</span>'}</td><td>${u.role==='Admin'?'<span style="font-size:12px;color:var(--text2)">All years</span>':(U.role==='Admin'?`<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" ${u.can_switch_fy?'checked':''} onchange="toggleUserFyAccess(${u.id},this.checked)"> Can switch FY</label>`:(u.can_switch_fy?'<span style="font-size:12px;color:var(--ok)">Enabled</span>':'<span style="font-size:12px;color:var(--text2)">Current FY only</span>'))}</td><td>${U.role==='Admin'?`<button class="btn btn-xs btn-o" onclick="ufm(${u.id})">Edit</button> <button class="btn btn-xs btn-o" onclick="rpwd(${u.id})">Reset</button> <button class="btn btn-xs btn-err" onclick="dlUser(${u.id})">Delete</button>`:''}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+async function toggleUserFyAccess(id,checked){
+  try{await api(`/api/users/${id}`,{method:'PUT',body:JSON.stringify({can_switch_fy:checked})});toast(checked?'User can now switch financial years':'Restricted to current FY');lUsers();}
+  catch(e){toast(e.message,'err');lUsers();}
 }
 function ufm(id=null){
   const u=id?S.users.find(x=>x.id===id):{};
@@ -1173,9 +1257,9 @@ async function dlTimeLog(id,taskId){if(!confirm('Delete?'))return;try{await api(
 
 /* ── INVOICES ── */
 async function lInvoices(){
-  document.getElementById('pt').textContent='Invoices & Fee Management';
-  const [invs,summary]=await Promise.all([api('/api/invoices/'),api('/api/invoices/summary/')]);
-  S.invoices=invs;S.clients=S.clients||await api('/api/clients/');S.engagements=S.engagements||await api('/api/engagements/');
+  document.getElementById('pt').textContent=`Invoices & Fee Management — FY ${FY}`;
+  const [invs,summary]=await Promise.all([api(fyQ('/api/invoices/')),api(fyQ('/api/invoices/summary/'))]);
+  S.invoices=invs;S.clients=S.clients||await api('/api/clients/');S.engagements=await api(fyQ('/api/engagements/'));
   document.getElementById('pa').innerHTML=`
     <select id="inv-status-f" onchange="filterInvoices()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-right:6px"><option value="">All Status</option><option>Unpaid</option><option>Partial</option><option>Paid</option></select>
     <button class="btn btn-p" onclick="invFm()">+ New Invoice</button>`;
@@ -1303,9 +1387,9 @@ function openPrintWindow(inv,f){
 
 /* ── DOCUMENT REGISTER ── */
 async function lDocReg(){
-  document.getElementById('pt').textContent='Document Inward / Outward Register';
-  S.clients=S.clients||await api('/api/clients/');S.engagements=S.engagements||await api('/api/engagements/');
-  const docs=await api('/api/doc-register/');S.docregs=docs;
+  document.getElementById('pt').textContent=`Document Inward / Outward Register — FY ${FY}`;
+  S.clients=S.clients||await api('/api/clients/');S.engagements=await api(fyQ('/api/engagements/'));
+  const docs=await api(fyQ('/api/doc-register/'));S.docregs=docs;
   const inward=docs.filter(d=>d.doc_type==='Inward').length,outward=docs.filter(d=>d.doc_type==='Outward').length;
   document.getElementById('pa').innerHTML=`<select id="dr-type-f" onchange="filterDocs()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-right:6px"><option value="">All</option><option>Inward</option><option>Outward</option></select><button class="btn btn-o" onclick="importFm('docreg')">📥 Import Excel</button> <button class="btn btn-p" onclick="docFm()">+ New Entry</button>`;
   document.getElementById('pb').innerHTML=`<div class="sg" style="grid-template-columns:repeat(3,1fr)"><div class="sc bl"><div class="sl">Total Documents</div><div class="sv">${docs.length}</div></div><div class="sc gn"><div class="sl">Inward</div><div class="sv">${inward}</div></div><div class="sc rd"><div class="sl">Outward</div><div class="sv">${outward}</div></div></div>
@@ -1351,8 +1435,8 @@ async function dlDoc(id){if(!confirm('Delete?'))return;try{await api(`/api/doc-r
 const CAL_CATS=['ITR','GST','TDS','ROC','Other'];
 const CAL_COLORS={ITR:'#3B82F6',GST:'#10B981',TDS:'#F59E0B',ROC:'#8B5CF6',Other:'#6B7280'};
 async function lCalendar(){
-  document.getElementById('pt').textContent='Statutory Compliance Calendar';
-  const items=await api('/api/compliance-calendar/');S.compliance=items;S.engagements=S.engagements||await api('/api/engagements/');
+  document.getElementById('pt').textContent=`Statutory Compliance Calendar — FY ${FY}`;
+  const items=await api(fyQ('/api/compliance-calendar/'));S.compliance=items;S.engagements=await api(fyQ('/api/engagements/'));
   const curFY=getCurFY();
   document.getElementById('pa').innerHTML=`<select id="cal-cat-f" onchange="filterCal()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-right:6px"><option value="">All Categories</option>${CAL_CATS.map(c=>`<option>${c}</option>`).join('')}</select><select id="cal-status-f" onchange="filterCal()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-right:6px"><option value="">All Status</option><option>Upcoming</option><option>Completed</option><option>Missed</option></select><button class="btn btn-g" onclick="seedFYFm()" style="margin-right:6px">⚡ Seed FY Dates</button><button class="btn btn-p" onclick="calFm()">+ Add Date</button>`;
   const today=new Date().toISOString().split('T')[0];
@@ -1383,7 +1467,7 @@ async function svCal(id){
   const body={title,category:document.getElementById('cc-cat').value,due_date:due,financial_year:document.getElementById('cc-fy').value,status:document.getElementById('cc-status').value,engagement_id:document.getElementById('cc-eng').value||null,is_recurring:document.getElementById('cc-rec').checked?1:0,description:document.getElementById('cc-desc').value};
   try{if(id)await api(`/api/compliance-calendar/${id}`,{method:'PUT',body:JSON.stringify(body)});else await api('/api/compliance-calendar/',{method:'POST',body:JSON.stringify(body)});cM();toast('Saved');lCalendar();}catch(e){toast(e.message,'err');}
 }
-function seedFYFm(){const curFY=getCurFY();oM('Seed Statutory Dates',`<p style="font-size:13px;color:var(--text2);margin-bottom:12px">Auto-populate standard ITR, GST, TDS, and ROC due dates for a financial year.</p><div class="fg"><label>Financial Year</label><input type="text" id="seed-fy" value="${curFY}" placeholder="2024-25"></div>`,`<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="doSeedFY()">⚡ Seed Dates</button>`);}
+function seedFYFm(){const curFY=FY||getCurFY();oM('Seed Statutory Dates',`<p style="font-size:13px;color:var(--text2);margin-bottom:12px">Auto-populate standard ITR, GST, TDS, and ROC due dates for a financial year.</p><div class="fg"><label>Financial Year</label><input type="text" id="seed-fy" value="${curFY}" placeholder="2024-25"></div>`,`<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="doSeedFY()">⚡ Seed Dates</button>`);}
 async function doSeedFY(){const fy=document.getElementById('seed-fy').value.trim();if(!fy)return toast('Enter financial year','err');try{const r=await api('/api/compliance-calendar/seed-fy',{method:'POST',body:JSON.stringify({financial_year:fy})});cM();toast(r.message,'ok');lCalendar();}catch(e){toast(e.message,'err');}}
 async function dlCal(id){if(!confirm('Delete this compliance date?'))return;try{await api(`/api/compliance-calendar/${id}`,{method:'DELETE'});toast('Deleted');lCalendar();}catch(e){toast(e.message,'err');}}
 
