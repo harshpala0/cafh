@@ -510,28 +510,83 @@ async function lDash(){
 }
 
 /* ── CLIENTS ── */
+const CLIENT_ENTITY_TYPES=['Company','Firm','LLP','Individual','Trust','HUF','AOP/BOI'];
 async function lClients(){
   S.clients=await api('/api/clients/');
-  document.getElementById('pa').innerHTML=`<button class="btn btn-p" onclick="cfm()">+ New Client</button>`;
-  document.getElementById('pb').innerHTML=S.clients.length?`<div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Name</th><th>PAN</th><th>GSTIN</th><th>Contact</th><th>Phone</th><th>Actions</th></tr></thead><tbody>
-  ${S.clients.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.pan||'-'}</td><td>${c.gstin||'-'}</td><td>${c.contact_person||'-'}</td><td>${c.contact_phone||'-'}</td><td><button class="btn btn-xs btn-o" onclick="cfm(${c.id})">Edit</button> <button class="btn btn-xs btn-err" onclick="dlClient(${c.id})">Delete</button></td></tr>`).join('')}
+  document.getElementById('pa').innerHTML=`<button class="btn btn-o" onclick="importFm('clients')">📥 Import Excel</button> <button class="btn btn-p" onclick="cfm()">+ New Client</button>`;
+  document.getElementById('pb').innerHTML=S.clients.length?`<div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Name</th><th>Entity Type</th><th>PAN</th><th>GSTIN</th><th>Contact</th><th>Phone</th><th>Actions</th></tr></thead><tbody>
+  ${S.clients.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.entity_type||'-'}</td><td>${c.pan||'-'}</td><td>${c.gstin||'-'}</td><td>${c.contact_person||'-'}</td><td>${c.contact_phone||'-'}</td><td><button class="btn btn-xs btn-o" onclick="cfm(${c.id})">Edit</button> <button class="btn btn-xs btn-err" onclick="dlClient(${c.id})">Delete</button></td></tr>`).join('')}
   </tbody></table></div></div>`:'<div class="empty"><div class="ei">&#128101;</div><p>No clients yet.</p></div>';
 }
 function cfm(id=null){
   const c=id?S.clients.find(x=>x.id===id):{};
+  const eo=['<option value="">--Select--</option>'].concat(CLIENT_ENTITY_TYPES.map(t=>`<option ${c.entity_type===t?'selected':''}>${t}</option>`)).join('');
   oM(id?'Edit Client':'New Client',`
-    <div class="fr"><div class="fg"><label>Client Name *</label><input id="cn" value="${c.name||''}"></div><div class="fg"><label>PAN</label><input id="cp" value="${c.pan||''}" maxlength="10"></div></div>
-    <div class="fr"><div class="fg"><label>GSTIN</label><input id="cg" value="${c.gstin||''}" maxlength="15"></div><div class="fg"><label>Contact Person</label><input id="cc" value="${c.contact_person||''}"></div></div>
-    <div class="fr"><div class="fg"><label>Phone</label><input id="cph" value="${c.contact_phone||''}"></div><div class="fg"><label>Email</label><input id="ce" value="${c.contact_email||''}"></div></div>
+    <div class="fr"><div class="fg"><label>Client Name *</label><input id="cn" value="${c.name||''}"></div><div class="fg"><label>Type of Entity</label><select id="cet">${eo}</select></div></div>
+    <div class="fr"><div class="fg"><label>PAN</label><input id="cp" value="${c.pan||''}" maxlength="10"></div><div class="fg"><label>GSTIN</label><input id="cg" value="${c.gstin||''}" maxlength="15"></div></div>
+    <div class="fr"><div class="fg"><label>Contact Person</label><input id="cc" value="${c.contact_person||''}"></div><div class="fg"><label>Phone</label><input id="cph" value="${c.contact_phone||''}"></div></div>
+    <div class="fg"><label>Email</label><input id="ce" value="${c.contact_email||''}"></div>
     <div class="fg"><label>Address</label><textarea id="ca">${c.address||''}</textarea></div>`,
     `<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="csave(${id||'null'})">Save</button>`);
 }
 async function csave(id){
-  const d={name:document.getElementById('cn').value,pan:document.getElementById('cp').value,gstin:document.getElementById('cg').value,contact_person:document.getElementById('cc').value,contact_phone:document.getElementById('cph').value,contact_email:document.getElementById('ce').value,address:document.getElementById('ca').value};
+  const d={name:document.getElementById('cn').value,entity_type:document.getElementById('cet').value,pan:document.getElementById('cp').value,gstin:document.getElementById('cg').value,contact_person:document.getElementById('cc').value,contact_phone:document.getElementById('cph').value,contact_email:document.getElementById('ce').value,address:document.getElementById('ca').value};
   if(!d.name)return toast('Name required','err');
   try{if(id)await api(`/api/clients/${id}`,{method:'PUT',body:JSON.stringify(d)});else await api('/api/clients/',{method:'POST',body:JSON.stringify(d)});cM();toast(id?'Updated':'Created');lClients();}catch(e){toast(e.message,'err');}
 }
 async function dlClient(id){if(!confirm('Delete this client?'))return;try{await api(`/api/clients/${id}`,{method:'DELETE'});toast('Deleted');lClients();}catch(e){toast(e.message,'err');}}
+
+/* ── EXCEL IMPORT (Clients + Doc Register) ── */
+const IMPORT_CFG={
+  clients:{title:'Import Clients & Engagements',template:'/api/clients/import-template',
+           templateName:'clients_import_template.xlsx',upload:'/api/clients/import-excel',
+           reload:()=>lClients(),
+           hint:'Excel must have columns: Name of Client, Type of Entity, PAN, Contact Person, Phone, Email, Address, Type of Engagement, Financial Year.'},
+  docreg:{title:'Import Document Inward/Outward Register',template:'/api/doc-register/import-template',
+          templateName:'inward_register_import_template.xlsx',upload:'/api/doc-register/import-excel',
+          reload:()=>lDocReg(),
+          hint:'Excel must have columns: Document Type, Date, Document Name, Category, Client Name (must match an existing client), Received From, Reference No, Status, Remarks.'}
+};
+async function downloadImportTemplate(kind){
+  const cfg=IMPORT_CFG[kind];
+  try{const r=await fetch(cfg.template,{headers:{'Authorization':`Bearer ${T}`}});if(!r.ok)throw new Error('Failed to download template');
+    const b=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=cfg.templateName;a.click();
+  }catch(e){toast(e.message,'err');}
+}
+function importFm(kind){
+  const cfg=IMPORT_CFG[kind];
+  oM(cfg.title,`
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">${cfg.hint}</p>
+    <div class="fg"><button class="btn btn-o btn-s" onclick="downloadImportTemplate('${kind}')" type="button">⬇ Download Sample Template</button></div>
+    <div class="fg"><label>Select Excel File (.xlsx / .csv)</label><input type="file" id="imp-file" accept=".xlsx,.xls,.csv"></div>
+    <div id="imp-result"></div>`,
+    `<button class="btn btn-o" onclick="cM()">Close</button><button class="btn btn-p" id="imp-go" onclick="runImport('${kind}')">Import</button>`);
+}
+async function runImport(kind){
+  const cfg=IMPORT_CFG[kind];
+  const fi=document.getElementById('imp-file');
+  if(!fi.files.length)return toast('Select a file first','err');
+  const btn=document.getElementById('imp-go');btn.disabled=true;btn.textContent='Importing...';
+  const fd=new FormData();fd.append('file',fi.files[0]);
+  try{
+    const r=await fetch(cfg.upload,{method:'POST',headers:{'Authorization':`Bearer ${T}`},body:fd});
+    const res=await r.json();
+    if(!r.ok)throw new Error(res.detail||'Import failed');
+    const lines=[];
+    if('clients_created' in res){
+      lines.push(`<p><strong>${res.clients_created}</strong> client(s) created, <strong>${res.clients_skipped}</strong> skipped (duplicate).</p>`);
+      lines.push(`<p><strong>${res.engagements_created}</strong> engagement(s) created, <strong>${res.engagements_skipped}</strong> skipped (already existed).</p>`);
+    } else {
+      lines.push(`<p><strong>${res.created}</strong> document entr${res.created===1?'y':'ies'} created, <strong>${res.skipped_duplicates}</strong> skipped (duplicate).</p>`);
+    }
+    if(res.errors&&res.errors.length)lines.push(`<div style="max-height:160px;overflow-y:auto;background:var(--err-bg);color:var(--err);padding:8px;border-radius:6px;font-size:12px;margin-top:8px"><strong>Errors (${res.errors.length}):</strong><br>${res.errors.map(x=>`• ${x}`).join('<br>')}</div>`);
+    if(res.warnings&&res.warnings.length)lines.push(`<div style="max-height:160px;overflow-y:auto;background:var(--warn-bg);color:var(--warn);padding:8px;border-radius:6px;font-size:12px;margin-top:8px"><strong>Notes (${res.warnings.length}):</strong><br>${res.warnings.map(x=>`• ${x}`).join('<br>')}</div>`);
+    document.getElementById('imp-result').innerHTML=lines.join('');
+    toast('Import complete');
+    cfg.reload();
+  }catch(e){toast(e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='Import';}
+}
 
 /* ── ENGAGEMENTS ── */
 async function lEng(){
@@ -1252,7 +1307,7 @@ async function lDocReg(){
   S.clients=S.clients||await api('/api/clients/');S.engagements=S.engagements||await api('/api/engagements/');
   const docs=await api('/api/doc-register/');S.docregs=docs;
   const inward=docs.filter(d=>d.doc_type==='Inward').length,outward=docs.filter(d=>d.doc_type==='Outward').length;
-  document.getElementById('pa').innerHTML=`<select id="dr-type-f" onchange="filterDocs()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-right:6px"><option value="">All</option><option>Inward</option><option>Outward</option></select><button class="btn btn-p" onclick="docFm()">+ New Entry</button>`;
+  document.getElementById('pa').innerHTML=`<select id="dr-type-f" onchange="filterDocs()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-right:6px"><option value="">All</option><option>Inward</option><option>Outward</option></select><button class="btn btn-o" onclick="importFm('docreg')">📥 Import Excel</button> <button class="btn btn-p" onclick="docFm()">+ New Entry</button>`;
   document.getElementById('pb').innerHTML=`<div class="sg" style="grid-template-columns:repeat(3,1fr)"><div class="sc bl"><div class="sl">Total Documents</div><div class="sv">${docs.length}</div></div><div class="sc gn"><div class="sl">Inward</div><div class="sv">${inward}</div></div><div class="sc rd"><div class="sl">Outward</div><div class="sv">${outward}</div></div></div>
   <div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Type</th><th>Date</th><th>Document Name</th><th>Category</th><th>Client</th><th>From / To</th><th>Ref No</th><th>Status</th><th>Remarks</th><th>Actions</th></tr></thead><tbody id="dr-tbody"></tbody></table></div></div>`;
   renderDocs(docs);
