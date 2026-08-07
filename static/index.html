@@ -1196,13 +1196,34 @@ async function expQ(){const eid=document.getElementById('qe')?.value;if(!eid)ret
 
 /* ── PROGRAMS ── */
 async function lProg(){
-  const progs=await api('/api/programs/');
-  document.getElementById('pa').innerHTML=(U.role==='Admin'||U.role==='Team Leader')?`<button class="btn btn-p" onclick="pfm()">+ New Program</button>`:'';
-  document.getElementById('pb').innerHTML=progs.map(p=>`<div class="card" style="margin-bottom:14px"><div class="card-h">${p.name} <span class="bg bg-mem">${p.engagement_type}</span><span style="font-weight:400;font-size:12px;color:var(--text2)">${p.checklist_items?.length||0} items</span>${(U.role==='Admin'||U.role==='Team Leader')?`<button class="btn btn-xs btn-err" style="margin-left:auto;float:right" onclick="dlProg(${p.id})">Delete</button>`:''}</div><div class="card-b" style="overflow-x:auto;padding:0">${p.checklist_items?.length?`<table class="dt"><thead><tr><th>Sr.</th><th>Area</th><th>Description</th><th>Ref</th><th>Priority</th></tr></thead><tbody>${p.checklist_items.map(i=>`<tr><td>${i.sr_no}</td><td>${i.area}</td><td>${i.description}</td><td>${i.reference||'-'}</td><td>${pb(i.priority)}</td></tr>`).join('')}</tbody></table>`:'<p style="padding:14px;color:var(--text2)">No items.</p>'}</div></div>`).join('')||'<div class="empty"><p>No programs.</p></div>';
+  S.progs=await api('/api/programs/');
+  const canEdit=(U.role==='Admin'||U.role==='Team Leader');
+  document.getElementById('pa').innerHTML=canEdit?`<button class="btn btn-p" onclick="pfm()">+ New Program</button>`:'';
+  document.getElementById('pb').innerHTML=S.progs.map(p=>`<div class="card" style="margin-bottom:14px"><div class="card-h">${p.name} <span class="bg bg-mem">${p.engagement_type}</span><span style="font-weight:400;font-size:12px;color:var(--text2)">${p.checklist_items?.length||0} items</span>${canEdit?`<span style="margin-left:auto;float:right;display:flex;gap:6px"><button class="btn btn-xs btn-o" onclick="addItemFm(${p.id})">+ Add Item</button><button class="btn btn-xs btn-o" onclick="pfm(${p.id})">Edit Program</button><button class="btn btn-xs btn-err" onclick="dlProg(${p.id})">Delete</button></span>`:''}</div><div class="card-b" style="overflow-x:auto;padding:0">${p.checklist_items?.length?`<table class="dt"><thead><tr><th>Sr.</th><th>Area</th><th>Description</th><th>Ref</th><th>Priority</th>${canEdit?'<th></th>':''}</tr></thead><tbody>${p.checklist_items.map(i=>`<tr><td>${i.sr_no}</td><td>${i.area}</td><td>${i.description}</td><td>${i.reference||'-'}</td><td>${pb(i.priority)}</td>${canEdit?`<td style="white-space:nowrap"><button class="btn btn-xs btn-o" onclick="itemFm(${p.id},${i.id})">Edit</button> <button class="btn btn-xs btn-err" onclick="dlItem(${i.id},${p.id})">✕</button></td>`:''}</tr>`).join('')}</tbody></table>`:'<p style="padding:14px;color:var(--text2)">No items yet.</p>'}</div></div>`).join('')||'<div class="empty"><p>No programs.</p></div>';
 }
-function pfm(){oM('New Program',`<div class="fg"><label>Name *</label><input id="pn"></div><div class="fg"><label>Type *</label><select id="pty"><option>Statutory Audit</option><option>Tax Audit</option><option>Internal Audit</option><option>GST Audit</option><option>Due Diligence</option><option>Certification</option><option>Other</option></select></div><div class="fg"><label>Description</label><textarea id="pd"></textarea></div>`,`<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="psave()">Save</button>`);}
-async function psave(){const d={name:document.getElementById('pn').value,engagement_type:document.getElementById('pty').value,description:document.getElementById('pd').value,checklist_items:[]};if(!d.name)return toast('Name required','err');try{await api('/api/programs/',{method:'POST',body:JSON.stringify(d)});cM();toast('Created');lProg();}catch(e){toast(e.message,'err');}}
-async function dlProg(id){if(!confirm('Delete this programme?'))return;try{await api(`/api/programs/${id}`,{method:'DELETE'});toast('Deleted');lProg();}catch(e){toast(e.message,'err');}}
+function pfm(id=null){
+  const p=id?S.progs.find(x=>x.id===id):{};
+  const types=['Statutory Audit','Tax Audit','Internal Audit','GST Audit','Due Diligence','Certification','Other'];
+  const ty=types.map(t=>`<option ${t===p.engagement_type?'selected':''}>${t}</option>`).join('');
+  oM(id?'Edit Program':'New Program',`<div class="fg"><label>Name *</label><input id="pn" value="${p.name||''}"></div><div class="fg"><label>Type *</label><select id="pty">${ty}</select></div><div class="fg"><label>Description</label><textarea id="pd">${p.description||''}</textarea></div>`,`<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="psave(${id||'null'})">Save</button>`);
+}
+async function psave(id){const d={name:document.getElementById('pn').value,engagement_type:document.getElementById('pty').value,description:document.getElementById('pd').value};if(!d.name)return toast('Name required','err');try{if(id){await api(`/api/programs/${id}`,{method:'PUT',body:JSON.stringify(d)});}else{d.checklist_items=[];await api('/api/programs/',{method:'POST',body:JSON.stringify(d)});}cM();toast(id?'Updated':'Created');lProg();}catch(e){toast(e.message,'err');}}
+async function dlProg(id){if(!confirm('Delete this programme and all its checklist items?'))return;try{await api(`/api/programs/${id}`,{method:'DELETE'});toast('Deleted');lProg();}catch(e){toast(e.message,'err');}}
+function addItemFm(programId){
+  oM('Add Checklist Item',`<div class="fr"><div class="fg"><label>Sr. No</label><input type="number" id="ci-sr"></div><div class="fg"><label>Priority</label><select id="ci-pr"><option>Low</option><option selected>Medium</option><option>High</option></select></div></div><div class="fg"><label>Area *</label><input id="ci-area"></div><div class="fg"><label>Description *</label><textarea id="ci-desc"></textarea></div><div class="fg"><label>Reference</label><input id="ci-ref" placeholder="e.g. SA 500"></div>`,
+    `<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="itemSave(${programId},null)">Add</button>`);
+}
+function itemFm(programId,itemId){
+  const p=S.progs.find(x=>x.id===programId);const it=p?.checklist_items?.find(x=>x.id===itemId);if(!it)return;
+  oM('Edit Checklist Item',`<div class="fr"><div class="fg"><label>Sr. No</label><input type="number" id="ci-sr" value="${it.sr_no}"></div><div class="fg"><label>Priority</label><select id="ci-pr"><option ${it.priority==='Low'?'selected':''}>Low</option><option ${(!it.priority||it.priority==='Medium')?'selected':''}>Medium</option><option ${it.priority==='High'?'selected':''}>High</option></select></div></div><div class="fg"><label>Area *</label><input id="ci-area" value="${it.area}"></div><div class="fg"><label>Description *</label><textarea id="ci-desc">${it.description}</textarea></div><div class="fg"><label>Reference</label><input id="ci-ref" value="${it.reference||''}" placeholder="e.g. SA 500"></div>`,
+    `<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="itemSave(${programId},${itemId})">Save</button>`);
+}
+async function itemSave(programId,itemId){
+  const d={sr_no:+document.getElementById('ci-sr').value||undefined,area:document.getElementById('ci-area').value,description:document.getElementById('ci-desc').value,reference:document.getElementById('ci-ref').value,priority:document.getElementById('ci-pr').value};
+  if(!d.area||!d.description)return toast('Area and Description are required','err');
+  try{if(itemId)await api(`/api/checklist-items/${itemId}`,{method:'PUT',body:JSON.stringify(d)});else await api(`/api/programs/${programId}/items`,{method:'POST',body:JSON.stringify(d)});cM();toast(itemId?'Updated':'Added');lProg();}catch(e){toast(e.message,'err');}
+}
+async function dlItem(itemId,programId){if(!confirm('Delete this checklist item?'))return;try{await api(`/api/checklist-items/${itemId}`,{method:'DELETE'});toast('Deleted');lProg();}catch(e){toast(e.message,'err');}}
 
 /* ── USERS ── */
 async function lUsers(){
