@@ -172,6 +172,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
     <div class="tabs">
       <div class="tab on" onclick="switchTab('firms')">Firms & Subscriptions</div>
       <div class="tab" onclick="switchTab('users')">Users</div>
+      <div class="tab" onclick="switchTab('templates')">Audit Program Templates</div>
     </div>
 
     <!-- FIRMS TAB -->
@@ -222,6 +223,41 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
             <tbody id="users-tbody">
               <tr><td colspan="6" class="empty">Select a firm to view users</td></tr>
             </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEMPLATES TAB -->
+    <div id="tab-templates" style="display:none">
+      <div class="card">
+        <div class="card-h">
+          Promote an Existing Program to a Base Template
+          <span style="font-weight:400;font-size:12.5px;color:var(--text3)">— pushes it to every other firm automatically</span>
+        </div>
+        <div class="card-b">
+          <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Pick the firm and program you already added the checklist to. This copies it into every other firm now, and into any new firm you create from here on — each firm gets its own independent copy they can freely edit.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="fg" style="min-width:220px;margin-bottom:0"><label>Source Firm</label>
+              <select id="promote-firm-sel" onchange="loadFirmProgramsForPromote()"><option value="">Select a firm…</option></select>
+            </div>
+            <div class="fg" style="min-width:260px;margin-bottom:0"><label>Program / Checklist</label>
+              <select id="promote-program-sel"><option value="">Select a firm first…</option></select>
+            </div>
+            <button class="btn btn-p" onclick="promoteToTemplate()" style="margin-bottom:2px">Promote & Push to All Firms</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-h">
+          Base Templates
+          <span style="font-weight:400;font-size:12.5px;color:var(--text3)">Automatically seeded into every new firm</span>
+        </div>
+        <div class="card-b" style="padding:0;overflow-x:auto">
+          <table class="dt">
+            <thead><tr><th>Name</th><th>Engagement Type</th><th>Checklist Items</th><th>Firms With a Copy</th><th>Actions</th></tr></thead>
+            <tbody id="templates-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -406,11 +442,13 @@ function openMo(id)  { document.getElementById(id).classList.add('sh'); }
 
 function switchTab(t) {
   document.querySelectorAll('.tab').forEach((el, i) => {
-    el.classList.toggle('on', ['firms','users'][i] === t);
+    el.classList.toggle('on', ['firms','users','templates'][i] === t);
   });
   document.getElementById('tab-firms').style.display = t === 'firms' ? '' : 'none';
   document.getElementById('tab-users').style.display = t === 'users' ? '' : 'none';
+  document.getElementById('tab-templates').style.display = t === 'templates' ? '' : 'none';
   if (t === 'users') populateFirmSelects();
+  if (t === 'templates') { populatePromoteFirmSelect(); loadTemplates(); }
 }
 
 // ── Stats ──────────────────────────────────────────────────────
@@ -630,6 +668,76 @@ async function saveUser() {
     // Refresh user list if same firm is selected
     if (document.getElementById('firm-filter').value === fid) loadUsers();
     refreshStats();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Audit Program Templates ─────────────────────────────────────
+function populatePromoteFirmSelect() {
+  const opts = ALL_FIRMS.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+  document.getElementById('promote-firm-sel').innerHTML = '<option value="">Select a firm…</option>' + opts;
+  document.getElementById('promote-program-sel').innerHTML = '<option value="">Select a firm first…</option>';
+}
+
+async function loadFirmProgramsForPromote() {
+  const fid = document.getElementById('promote-firm-sel').value;
+  const sel = document.getElementById('promote-program-sel');
+  if (!fid) { sel.innerHTML = '<option value="">Select a firm first…</option>'; return; }
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const progs = await saFetch(`/api/superadmin/firms/${fid}/programs`);
+    sel.innerHTML = progs.length
+      ? progs.map(p => `<option value="${p.id}">${p.name} (${p.engagement_type}) — ${p.item_count} items</option>`).join('')
+      : '<option value="">No programs in this firm</option>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function promoteToTemplate() {
+  const firm_id = document.getElementById('promote-firm-sel').value;
+  const program_id = document.getElementById('promote-program-sel').value;
+  if (!firm_id || !program_id) return toast('Select a firm and a program first', 'err');
+  if (!confirm('This will push a copy of this checklist to every other firm. Continue?')) return;
+  try {
+    const res = await saFetch('/api/superadmin/program-templates/promote', {
+      method: 'POST', body: JSON.stringify({ firm_id: +firm_id, program_id: +program_id })
+    });
+    toast(`Base template created — pushed to ${res.firms_seeded} other firm(s)`);
+    loadTemplates();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function loadTemplates() {
+  const tbody = document.getElementById('templates-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
+  try {
+    const templates = await saFetch('/api/superadmin/program-templates');
+    tbody.innerHTML = templates.length ? templates.map(t => `
+      <tr>
+        <td><strong>${t.name}</strong></td>
+        <td>${t.engagement_type}</td>
+        <td>${t.item_count}</td>
+        <td>${t.firms_using} / ${ALL_FIRMS.length}</td>
+        <td>
+          <button class="btn btn-o btn-xs" onclick="syncTemplate(${t.id})">Sync to All Firms</button>
+          <button class="btn btn-err btn-xs" onclick="deleteTemplate(${t.id})">Delete Template</button>
+        </td>
+      </tr>`).join('') : '<tr><td colspan="5" class="empty">No base templates yet. Promote a firm\'s existing program above to create one.</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function syncTemplate(tid) {
+  try {
+    const res = await saFetch(`/api/superadmin/program-templates/${tid}/sync`, { method: 'POST' });
+    toast(`Synced — ${res.firms_seeded} firm(s) received a new copy`);
+    loadTemplates();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function deleteTemplate(tid) {
+  if (!confirm('Delete this base template? Firms that already have their own copy keep it — this only removes the template itself.')) return;
+  try {
+    await saFetch(`/api/superadmin/program-templates/${tid}`, { method: 'DELETE' });
+    toast('Template deleted');
+    loadTemplates();
   } catch(e) { toast(e.message, 'err'); }
 }
 </script>
