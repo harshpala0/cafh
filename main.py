@@ -6,7 +6,7 @@
 ═══════════════════════════════════════════════════════════════
 """
 import os, uuid, json, re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from functools import wraps
 from flask import Flask, request, jsonify, g, send_file, send_from_directory, Response
 import psycopg2
@@ -154,9 +154,13 @@ def init_db():
         financial_year TEXT NOT NULL, period_from DATE, period_to DATE,
         team_leader_id INTEGER REFERENCES users(id),
         status TEXT DEFAULT 'Active', notes TEXT,
+        due_date DATE,
         created_by_id INTEGER REFERENCES users(id),
         created_at TIMESTAMP DEFAULT NOW()
     );
+
+    -- Migration safety net for pre-existing tables that predate this field
+    ALTER TABLE engagements ADD COLUMN IF NOT EXISTS due_date DATE;
 
     CREATE TABLE IF NOT EXISTS engagement_teams (
         id SERIAL PRIMARY KEY,
@@ -683,6 +687,73 @@ def dashboard():
         ),
     })
 
+@app.route("/api/dashboard/engagements-summary")
+@login_required
+def dashboard_engagements_summary():
+    fy, err = resolve_fy()
+    if err: return err
+    fid = g.firm_id
+    sql = ("SELECT e.*, u.full_name as assignee_name FROM engagements e "
+           "LEFT JOIN users u ON e.team_leader_id=u.id WHERE e.firm_id=%s AND e.financial_year=%s")
+    params = [fid, fy]
+    if g.user["role"] == "Client":
+        cid = g.user.get("client_id")
+        if not cid: return jsonify({"financial_year": fy, "total": 0, "buckets": {}, "assignees": []})
+        sql += " AND e.client_id=%s"; params.append(cid)
+    rows = qry(sql, params)
+    today = date.today()
+    buckets = {"pending": 0, "overdue": 0, "completed": 0, "on_hold": 0}
+    assignees = {}
+    for e in rows:
+        b = _eng_bucket(e, today)
+        buckets[b] += 1
+        name = e["assignee_name"] or "Unassigned"
+        a = assignees.setdefault(name, {"assignee_id": e["team_leader_id"], "name": name,
+                                         "total": 0, "pending": 0, "overdue": 0, "completed": 0, "on_hold": 0})
+        a["total"] += 1
+        a[b] += 1
+    return jsonify({
+        "financial_year": fy,
+        "total": len(rows),
+        "buckets": buckets,
+        "assignees": sorted(assignees.values(), key=lambda x: -x["total"]),
+    })
+
+@app.route("/api/dashboard/engagements-list")
+@login_required
+def dashboard_engagements_list():
+    fy, err = resolve_fy()
+    if err: return err
+    fid = g.firm_id
+    bucket = (request.args.get("bucket") or "").strip()
+    assignee = request.args.get("assignee_id")
+    sql = ("SELECT e.*, c.name as client_name, u.full_name as assignee_name FROM engagements e "
+           "JOIN clients c ON e.client_id=c.id LEFT JOIN users u ON e.team_leader_id=u.id "
+           "WHERE e.firm_id=%s AND e.financial_year=%s")
+    params = [fid, fy]
+    if g.user["role"] == "Client":
+        cid = g.user.get("client_id")
+        if not cid: return jsonify([])
+        sql += " AND e.client_id=%s"; params.append(cid)
+    if assignee == "unassigned":
+        sql += " AND e.team_leader_id IS NULL"
+    elif assignee:
+        sql += " AND e.team_leader_id=%s"; params.append(assignee)
+    sql += " ORDER BY e.created_at DESC"
+    rows = qry(sql, params)
+    today = date.today()
+    out = []
+    for e in rows:
+        b = _eng_bucket(e, today)
+        if bucket and b != bucket: continue
+        out.append({
+            "id": e["id"], "title": e["title"], "client_name": e["client_name"],
+            "assignee_name": e["assignee_name"] or "Unassigned", "engagement_type": e["engagement_type"],
+            "financial_year": e["financial_year"], "status": e["status"] or "Active",
+            "due_date": e["due_date"], "period_to": e["period_to"], "bucket": b,
+        })
+    return jsonify(out)
+
 # ═══════════════════════════════════════════════════════════════
 #  USERS
 # ═══════════════════════════════════════════════════════════════
@@ -1059,6 +1130,27 @@ def _eng_full(e):
     e["team_leader"] = _user_out(tl) if tl else None
     return e
 
+ENGAGEMENT_STATUSES = ["Active", "Completed", "On Hold"]
+
+def _as_date(d):
+    if d is None: return None
+    if isinstance(d, str):
+        try: return datetime.fromisoformat(d[:10]).date()
+        except Exception: return None
+    if hasattr(d, "date") and not isinstance(d, date): return d.date()
+    return d
+
+def _eng_bucket(e, today):
+    """Classify an engagement into Pending / Overdue / Completed / On Hold for the
+    dashboard. Overdue = not completed, past its due date (falls back to period_to
+    if no explicit due date was set)."""
+    status = e.get("status") or "Active"
+    if status == "Completed": return "completed"
+    if status == "On Hold": return "on_hold"
+    dd = _as_date(e.get("due_date")) or _as_date(e.get("period_to"))
+    if dd and dd < today: return "overdue"
+    return "pending"
+
 @app.route("/api/engagements/")
 @login_required
 def list_engagements():
@@ -1091,10 +1183,10 @@ def create_engagement():
     d = request.get_json()
     eid = qry_id(
         "INSERT INTO engagements (firm_id,client_id,title,engagement_type,financial_year,"
-        "period_from,period_to,team_leader_id,notes,created_by_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        "period_from,period_to,team_leader_id,notes,due_date,created_by_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         (g.firm_id, d["client_id"], d["title"], d["engagement_type"], d["financial_year"],
          d.get("period_from"), d.get("period_to"), d.get("team_leader_id"),
-         d.get("notes"), g.user["id"])
+         d.get("notes"), d.get("due_date"), g.user["id"])
     )
     log_action(g.firm_id, g.user["id"], "CREATE_ENGAGEMENT", "Engagement", eid,
                f"Created: {d['title']}", request.remote_addr)
@@ -1106,7 +1198,7 @@ def update_engagement(eid):
     d = request.get_json()
     fields, vals = [], []
     for f in ["title","engagement_type","financial_year","period_from","period_to",
-              "team_leader_id","status","notes"]:
+              "team_leader_id","status","notes","due_date"]:
         if f in d: fields.append(f"{f}=%s"); vals.append(d[f])
     if not fields: return jsonify({"detail":"Nothing"}), 400
     vals += [eid, g.firm_id]
