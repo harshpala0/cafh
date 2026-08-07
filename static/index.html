@@ -533,6 +533,7 @@ function sb(s){const m={'Pending':'pen','In Progress':'prog','Completed':'comp',
 function pb(p){const m={'High':'hi','Medium':'md','Low':'lo'};return`<span class="bg bg-${m[p]||'md'}">${p}</span>`;}
 function qb(s){const m={'Open':'opn','Responded':'rsp','Closed':'cls'};return`<span class="bg bg-${m[s]||'opn'}">${s}</span>`;}
 function rb(r){const m={'Admin':'adm','Team Leader':'tl','Member':'mem','Client':'opn'};return`<span class="bg bg-${m[r]||'mem'}">${r}</span>`;}
+function egb(e){const status=e.status||'Active';if(status==='Completed')return'<span class="bg bg-app">Completed</span>';if(status==='On Hold')return'<span class="bg bg-md">On Hold</span>';const dd=e.due_date||e.period_to;if(dd&&new Date(dd)<new Date(new Date().toDateString()))return'<span class="bg bg-rej">Overdue</span>';return'<span class="bg bg-pen">Active</span>';}
 function fd(d){return d?new Date(d).toLocaleDateString('en-IN'):'-';}
 
 /* ── INIT ── */
@@ -557,7 +558,16 @@ async function lDash(){
   const d=await api(fyQ('/api/dashboard/'));
   let alerts=[];try{alerts=await api('/api/alerts/');}catch(e){}
   let invSum={};try{invSum=await api(fyQ('/api/invoices/summary/'));}catch(e){}
+  let engSum={buckets:{},assignees:[],total:0};try{engSum=await api(fyQ('/api/dashboard/engagements-summary'));}catch(e){}
   const overdue=alerts.filter(a=>a.type==='overdue_task').length;
+  const bkt=engSum.buckets||{};
+  const bktMeta=[
+    {key:'pending',label:'Pending',color:'#2563EB',bg:'#EFF6FF'},
+    {key:'overdue',label:'Overdue',color:'#DC2626',bg:'#FEF2F2'},
+    {key:'completed',label:'Completed',color:'#059669',bg:'#ECFDF5'},
+    {key:'on_hold',label:'On Hold',color:'#D97706',bg:'#FFFBEB'},
+  ];
+  const engTotal=engSum.total||0;
   document.getElementById('pb').innerHTML=`
     <div class="sg">
       <div class="sc gd"><div class="sl">My Pending Tasks</div><div class="sv">${d.my_pending_tasks}</div></div>
@@ -571,10 +581,29 @@ async function lDash(){
       <div class="sc"><div class="sl">Total Billed</div><div class="sv" style="font-size:18px">₹${((invSum.total_billed||0)/1000).toFixed(0)}K</div></div>
       <div class="sc"><div class="sl">Outstanding</div><div class="sv" style="font-size:18px;color:var(--warn)">₹${((invSum.total_outstanding||0)/1000).toFixed(0)}K</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card"><div class="card-h">Task Breakdown</div><div class="card-b" style="display:flex;flex-direction:column;gap:6px;font-size:13px">
-        ${['Pending','In Progress','Completed','Under Review','Approved','Rejected'].map(s=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F0EDE8">${s} <strong>${d[s.toLowerCase().replace(/ /g,'_')+'_tasks']||0}</strong></div>`).join('')}
-      </div></div>
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px">
+      <div class="card">
+        <div class="card-h">Engagement Completion — FY ${engSum.financial_year||FY}</div>
+        <div class="card-b" style="display:flex;flex-direction:column;gap:8px">
+          ${bktMeta.map(m=>{const c=bkt[m.key]||0;const pct=engTotal?Math.round(c/engTotal*100):0;return`
+          <div onclick="openEngDrilldown('${m.key}',null)" style="cursor:pointer;padding:9px 12px;border-radius:8px;background:${m.bg}">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="font-weight:600;color:${m.color}">${m.label}</span><span style="color:${m.color}">${c} <span style="color:var(--text2);font-weight:400">(${pct}%)</span></span></div>
+            <div style="height:6px;background:rgba(0,0,0,0.06);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${m.color};border-radius:3px"></div></div>
+          </div>`;}).join('')}
+          ${!engTotal?`<p style="color:var(--text2);font-size:12.5px;margin-top:4px">No engagements in FY ${engSum.financial_year||FY} yet.</p>`:''}
+        </div>
+        <div class="card-h" style="border-top:1px solid #F0EDE8">By Assignee</div>
+        <div class="card-b" style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto">
+          ${(engSum.assignees||[]).length?(engSum.assignees||[]).map(a=>`
+          <div onclick="openEngDrilldown(null,${a.assignee_id||"'unassigned'"})" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-radius:6px;font-size:13px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <span>${a.name}</span>
+            <span style="display:flex;gap:6px;align-items:center">
+              ${a.overdue?`<span style="font-size:11px;color:#DC2626;font-weight:600">${a.overdue} overdue</span>`:''}
+              <span class="bg" style="background:var(--surface2)">${a.total}</span>
+            </span>
+          </div>`).join(''):'<p style="color:var(--text2);font-size:12.5px">No assignees yet.</p>'}
+        </div>
+      </div>
       <div class="card"><div class="card-h">Quick Actions</div><div class="card-b" style="display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-p" onclick="nav('clients')" style="justify-content:center">Manage Clients</button>
         <button class="btn btn-g" onclick="nav('engagements')" style="justify-content:center">View Engagements</button>
@@ -587,6 +616,19 @@ async function lDash(){
     ${alerts.slice(0,8).map(a=>`<div style="padding:8px 10px;border-radius:6px;font-size:12px;background:${a.severity==='high'?'var(--err-bg)':a.severity==='warn'?'var(--warn-bg)':'var(--info-bg)'};color:${a.severity==='high'?'var(--err)':a.severity==='warn'?'var(--warn)':'var(--info)'}">${a.message}</div>`).join('')}
     </div></div>`:''}`;
   pollAlerts();
+}
+const ENG_BUCKET_LABELS={pending:'Pending',overdue:'Overdue',completed:'Completed',on_hold:'On Hold'};
+async function openEngDrilldown(bucket,assigneeId){
+  let url=fyQ('/api/dashboard/engagements-list');
+  if(bucket)url+=`&bucket=${bucket}`;
+  if(assigneeId!==null&&assigneeId!==undefined)url+=`&assignee_id=${assigneeId}`;
+  let rows=[];
+  try{rows=await api(url);}catch(e){toast(e.message,'err');return;}
+  const title=bucket?`${ENG_BUCKET_LABELS[bucket]} Engagements`:'Engagements';
+  oM(title,rows.length?`<div style="max-height:60vh;overflow-y:auto"><table class="dt"><thead><tr><th>Client</th><th>Title</th><th>Type</th><th>FY</th><th>Assigned To</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td><strong>${r.client_name}</strong></td><td style="max-width:200px">${r.title}</td><td>${r.engagement_type}</td><td>${r.financial_year}</td><td>${r.assignee_name}</td><td>${r.bucket==='overdue'?'<span style="color:#DC2626;font-weight:600">Overdue</span>':r.status}</td><td><button class="btn btn-xs btn-g" onclick="cM();oEng(${r.id})">Open</button></td></tr>`).join('')}
+    </tbody></table></div>`:'<p style="color:var(--text2);font-size:13px">No engagements found for this filter.</p>',
+    `<button class="btn btn-o" onclick="cM()">Close</button>`);
 }
 
 /* ── CLIENTS ── */
@@ -675,7 +717,7 @@ async function lEng(){
   if(!isClient){S.clients=await api('/api/clients/');S.users=await api('/api/users/');}
   document.getElementById('pa').innerHTML=isClient?`<span style="font-size:13px;color:var(--text2)">👁 View Only</span>`:`<button class="btn btn-p" onclick="efm()">+ New Engagement</button>`;
   document.getElementById('pb').innerHTML=S.engs.length?`<div class="card"><div class="card-b" style="overflow-x:auto;padding:0"><table class="dt"><thead><tr><th>Title</th><th>Type</th><th>FY</th><th>Period</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-  ${S.engs.map(e=>`<tr><td><strong>${e.title}</strong></td><td>${e.engagement_type}</td><td>${e.financial_year}</td><td>${fd(e.period_from)} – ${fd(e.period_to)}</td><td>${e.status}</td><td><button class="btn btn-xs btn-g" onclick="oEng(${e.id})">View</button>${!isClient?` <button class="btn btn-xs btn-o" onclick="efm(${e.id})">Edit</button> <button class="btn btn-xs btn-err" onclick="dlEng(${e.id})">Delete</button>`:''}</td></tr>`).join('')}
+  ${S.engs.map(e=>`<tr><td><strong>${e.title}</strong></td><td>${e.engagement_type}</td><td>${e.financial_year}</td><td>${fd(e.period_from)} – ${fd(e.period_to)}</td><td>${egb(e)}</td><td><button class="btn btn-xs btn-g" onclick="oEng(${e.id})">View</button>${!isClient?` <button class="btn btn-xs btn-o" onclick="efm(${e.id})">Edit</button> <button class="btn btn-xs btn-err" onclick="dlEng(${e.id})">Delete</button>`:''}</td></tr>`).join('')}
   </tbody></table></div></div>`:'<div class="empty"><div class="ei">&#128194;</div><p>No engagements.</p></div>';
 }
 function efm(id=null){
@@ -685,17 +727,19 @@ function efm(id=null){
   const ty=['Statutory Audit','Tax Audit','Internal Audit','GST Audit','Due Diligence','Certification','Other'].map(t=>`<option ${t===e.engagement_type?'selected':''}>${t}</option>`).join('');
   const y=new Date().getFullYear();
   const fy=Array.from({length:5},(_,i)=>{const v=`${y-2+i}-${(y-1+i).toString().slice(2)}`;return`<option ${v===(e.financial_year||FY)?'selected':''}>${v}</option>`;}).join('');
+  const so=['Active','Completed','On Hold'].map(s=>`<option ${(e.status||'Active')===s?'selected':''}>${s}</option>`).join('');
   oM(id?'Edit Engagement':'New Engagement',`
     <div class="fg"><label>Client *</label><select id="ec">${co}</select></div>
     <div class="fg"><label>Title *</label><input id="et" value="${e.title||''}"></div>
     <div class="fr"><div class="fg"><label>Type *</label><select id="ety">${ty}</select></div><div class="fg"><label>Financial Year *</label><select id="efy">${fy}</select></div></div>
     <div class="fr"><div class="fg"><label>Period From</label><input type="date" id="epf" value="${e.period_from||''}"></div><div class="fg"><label>Period To</label><input type="date" id="ept" value="${e.period_to||''}"></div></div>
-    <div class="fg"><label>Team Leader</label><select id="etl"><option value="">--Select--</option>${uo}</select></div>
+    <div class="fr"><div class="fg"><label>Status</label><select id="est">${so}</select></div><div class="fg"><label>Due Date <span style="font-weight:400;color:var(--text2)">(for overdue tracking)</span></label><input type="date" id="edd" value="${e.due_date||''}"></div></div>
+    <div class="fg"><label>Team Leader / Assigned To</label><select id="etl"><option value="">--Select--</option>${uo}</select></div>
     <div class="fg"><label>Notes</label><textarea id="en">${e.notes||''}</textarea></div>`,
     `<button class="btn btn-o" onclick="cM()">Cancel</button><button class="btn btn-p" onclick="esave(${id||'null'})">Save</button>`);
 }
 async function esave(id){
-  const d={client_id:+document.getElementById('ec').value,title:document.getElementById('et').value,engagement_type:document.getElementById('ety').value,financial_year:document.getElementById('efy').value,period_from:document.getElementById('epf').value||null,period_to:document.getElementById('ept').value||null,team_leader_id:+document.getElementById('etl').value||null,notes:document.getElementById('en').value};
+  const d={client_id:+document.getElementById('ec').value,title:document.getElementById('et').value,engagement_type:document.getElementById('ety').value,financial_year:document.getElementById('efy').value,period_from:document.getElementById('epf').value||null,period_to:document.getElementById('ept').value||null,status:document.getElementById('est').value,due_date:document.getElementById('edd').value||null,team_leader_id:+document.getElementById('etl').value||null,notes:document.getElementById('en').value};
   if(!d.title)return toast('Title required','err');
   try{if(id)await api(`/api/engagements/${id}`,{method:'PUT',body:JSON.stringify(d)});else await api('/api/engagements/',{method:'POST',body:JSON.stringify(d)});cM();toast(id?'Updated':'Created');lEng();}catch(e){toast(e.message,'err');}
 }
