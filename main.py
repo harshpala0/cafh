@@ -979,16 +979,16 @@ def clients_import_template():
     ws = wb.active
     ws.title = "Clients Import"
     headers = ["Name of Client","Type of Entity","PAN","Contact Person","Phone",
-               "Email","Address","Type of Engagement","Financial Year"]
+               "Email","Address","Type of Engagement"]
     ws.append(headers)
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="2563EB")
     ws.append(["ABC Textiles Pvt Ltd","Company","ABCDE1234F","Rajesh Shah","9876543210",
-               "rajesh@abctextiles.com","123, MG Road, Mumbai","Statutory & Tax Audit","2025-26"])
+               "rajesh@abctextiles.com","123, MG Road, Mumbai","Statutory & Tax Audit"])
     ws.append(["Sunrise Traders","Firm","FGHIJ5678K","Priya Mehta","9823456789",
-               "priya@sunrisetraders.com","45, Market Street, Pune","GST Audit","2025-26"])
-    for col, w in zip("ABCDEFGHI", [26,14,14,18,14,26,30,26,14]):
+               "priya@sunrisetraders.com","45, Market Street, Pune","GST Audit"])
+    for col, w in zip("ABCDEFGH", [26,14,14,18,14,26,30,26]):
         ws.column_dimensions[col].width = w
     notes = wb.create_sheet("Instructions")
     notes.append(["Column","Notes"])
@@ -1002,7 +1002,9 @@ def clients_import_template():
                                 "'Statutory & Tax Audit' / 'Statutory Audit, Tax Audit'. "
                                 "Recognised keywords: statutory, tax audit, internal, gst, "
                                 "due diligence, certification. Anything else is kept as 'Other'."),
-        ("Financial Year", "Required to create engagements, format YYYY-YY, e.g. 2025-26."),
+        ("Financial Year", "Not an Excel column — engagements are created in whichever Financial "
+                            "Year you have selected on the Dashboard/top-bar FY selector at the "
+                            "moment you run the import."),
     ]
     for r in rows: notes.append(r)
     notes.column_dimensions["A"].width = 24
@@ -1018,6 +1020,14 @@ def clients_import_excel():
         import pandas as pd
     except ImportError:
         return jsonify({"detail": "pandas not installed. Contact support."}), 500
+
+    # Engagements created by this import always use the Financial Year currently
+    # selected on the Dashboard/top-bar FY selector — not a per-row Excel column —
+    # so there's no risk of engagements landing in a year the importer didn't intend.
+    import_fy = (request.form.get("fy") or "").strip() or current_fy()
+    if import_fy != current_fy() and g.user["role"] != "Admin" and not g.user.get("can_switch_fy"):
+        return jsonify({"detail": "You don't have permission to import data into that financial year. "
+                                   "Ask your Admin for access."}), 403
 
     f = request.files.get("file")
     if not f: return jsonify({"detail": "No file uploaded"}), 400
@@ -1057,6 +1067,7 @@ def clients_import_excel():
     clients_created, clients_skipped = 0, 0
     engagements_created, engagements_skipped = 0, 0
     row_errors, row_warnings = [], []
+    fys_touched = set()
 
     for i, row in df.iterrows():
         rn = i + 2  # account for header row, 1-indexed
@@ -1089,16 +1100,13 @@ def clients_import_excel():
         eng_cell = cell(row, "Type of Engagement")
         if not eng_cell:
             continue
-        fy = cell(row, "Financial Year")
+        fy = import_fy
         types = _parse_engagement_types(eng_cell)
-        if types and not _fy_valid(fy):
-            row_errors.append(f"Row {rn}: engagement type(s) given but Financial Year "
-                               f"'{fy or ''}' is missing/invalid (expected YYYY-YY) — engagements not created.")
-            continue
         for t in types:
             display_type = t.split(":",1)[1] if t.startswith("Other:") else t
             canonical_type = "Other" if t.startswith("Other:") else t
             k = eng_key(client_id, canonical_type, fy)
+            fys_touched.add(fy)
             if k in eng_index:
                 engagements_skipped += 1
                 continue
@@ -1112,11 +1120,12 @@ def clients_import_excel():
             engagements_created += 1
 
     log_action(g.firm_id, g.user["id"], "IMPORT_CLIENTS", "Client", None,
-               f"Imported: {clients_created} clients, {engagements_created} engagements", request.remote_addr)
+               f"Imported: {clients_created} clients, {engagements_created} engagements (FY {import_fy})", request.remote_addr)
 
     return jsonify({
         "clients_created": clients_created, "clients_skipped": clients_skipped,
         "engagements_created": engagements_created, "engagements_skipped": engagements_skipped,
+        "engagement_financial_years": sorted(fys_touched), "import_financial_year": import_fy,
         "errors": row_errors, "warnings": row_warnings, "rows_processed": len(df)
     }), 200
 
