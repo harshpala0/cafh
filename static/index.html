@@ -663,7 +663,7 @@ const IMPORT_CFG={
   clients:{title:'Import Clients & Engagements',template:'/api/clients/import-template',
            templateName:'clients_import_template.xlsx',upload:'/api/clients/import-excel',
            reload:()=>lClients(),
-           hint:'Excel must have columns: Name of Client, Type of Entity, PAN, Contact Person, Phone, Email, Address, Type of Engagement, Financial Year.'},
+           hint:'Excel must have columns: Name of Client, Type of Entity, PAN, Contact Person, Phone, Email, Address, Type of Engagement. Engagements are created in whichever Financial Year is currently selected on the Dashboard — not a column in the Excel.'},
   docreg:{title:'Import Document Inward/Outward Register',template:'/api/doc-register/import-template',
           templateName:'inward_register_import_template.xlsx',upload:'/api/doc-register/import-excel',
           reload:()=>lDocReg(),
@@ -677,7 +677,9 @@ async function downloadImportTemplate(kind){
 }
 function importFm(kind){
   const cfg=IMPORT_CFG[kind];
+  const fyBanner=kind==='clients'?`<div style="background:var(--info-bg);color:var(--info);padding:9px 12px;border-radius:6px;font-size:13px;margin-bottom:12px">Engagements from this import will be created in <strong>FY ${FY}</strong> (your current Dashboard selection). Switch the FY selector in the top bar first if you meant a different year.</div>`:'';
   oM(cfg.title,`
+    ${fyBanner}
     <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">${cfg.hint}</p>
     <div class="fg"><button class="btn btn-o btn-s" onclick="downloadImportTemplate('${kind}')" type="button">⬇ Download Sample Template</button></div>
     <div class="fg"><label>Select Excel File (.xlsx / .csv)</label><input type="file" id="imp-file" accept=".xlsx,.xls,.csv"></div>
@@ -690,6 +692,7 @@ async function runImport(kind){
   if(!fi.files.length)return toast('Select a file first','err');
   const btn=document.getElementById('imp-go');btn.disabled=true;btn.textContent='Importing...';
   const fd=new FormData();fd.append('file',fi.files[0]);
+  if(kind==='clients')fd.append('fy',FY);
   try{
     const r=await fetch(cfg.upload,{method:'POST',headers:{'Authorization':`Bearer ${T}`},body:fd});
     const res=await r.json();
@@ -697,7 +700,15 @@ async function runImport(kind){
     const lines=[];
     if('clients_created' in res){
       lines.push(`<p><strong>${res.clients_created}</strong> client(s) created, <strong>${res.clients_skipped}</strong> skipped (duplicate).</p>`);
-      lines.push(`<p><strong>${res.engagements_created}</strong> engagement(s) created, <strong>${res.engagements_skipped}</strong> skipped (already existed).</p>`);
+      lines.push(`<p><strong>${res.engagements_created}</strong> engagement(s) created in <strong>FY ${res.import_financial_year||FY}</strong>, <strong>${res.engagements_skipped}</strong> skipped (already existed).</p>`);
+      const touchedFYs=res.engagement_financial_years||[];
+      const otherFYs=touchedFYs.filter(f=>f&&f!==FY);
+      if(otherFYs.length){
+        lines.push(`<div style="background:var(--info-bg);color:var(--info);padding:9px 12px;border-radius:6px;font-size:12.5px;margin-top:4px">
+          These engagements were created for <strong>FY ${otherFYs.join(', ')}</strong> — not the FY you're currently viewing (<strong>FY ${FY}</strong>), so they won't show on the Engagements tab until you switch.
+          ${otherFYs.map(f=>`<button class="btn btn-xs btn-o" style="margin-top:6px;margin-right:6px" onclick="cM();pickFy('${f}',${(f!==FY_META.current_fy)&&!FY_META.can_switch_fy})">Switch to FY ${f}</button>`).join('')}
+        </div>`);
+      }
     } else {
       lines.push(`<p><strong>${res.created}</strong> document entr${res.created===1?'y':'ies'} created, <strong>${res.skipped_duplicates}</strong> skipped (duplicate).</p>`);
     }
