@@ -184,6 +184,26 @@ def init_db():
         reference TEXT, priority TEXT DEFAULT 'Medium'
     );
 
+    -- Master template library: base audit-procedure checklists that get copied
+    -- into every firm (existing and future) as their own independent, editable copy.
+    CREATE TABLE IF NOT EXISTS master_program_templates (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL, engagement_type TEXT NOT NULL, description TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS master_checklist_items (
+        id SERIAL PRIMARY KEY,
+        template_id INTEGER NOT NULL REFERENCES master_program_templates(id) ON DELETE CASCADE,
+        sr_no INTEGER NOT NULL, area TEXT NOT NULL, description TEXT NOT NULL,
+        reference TEXT, priority TEXT DEFAULT 'Medium'
+    );
+
+    -- Tracks which firm-owned program was seeded from which master template,
+    -- so seeding is idempotent (never double-seeds the same firm) and deleting
+    -- a template later never touches firms that already got their own copy.
+    ALTER TABLE audit_programs ADD COLUMN IF NOT EXISTS seeded_from_template_id INTEGER REFERENCES master_program_templates(id) ON DELETE SET NULL;
+
     CREATE TABLE IF NOT EXISTS tasks (
         id SERIAL PRIMARY KEY,
         firm_id INTEGER NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
@@ -391,6 +411,44 @@ def log_action(firm_id, user_id, action, entity_type=None, entity_id=None, detai
         commit=True
     )
 
+# ═══════════════════════════════════════════════════════════════
+#  MASTER AUDIT-PROGRAM TEMPLATE SEEDING
+#  Base checklists live in master_program_templates / master_checklist_items,
+#  decoupled from any one firm. Each firm gets its own independent, editable
+#  COPY in its normal audit_programs table — editing one firm's copy never
+#  touches the template or any other firm's copy.
+# ═══════════════════════════════════════════════════════════════
+def _seed_template_to_firm(template, items, firm_id):
+    """Copy one master template + its checklist items into a firm's own Audit
+    Programs, unless that firm already has a copy of this exact template
+    (idempotent — safe to call repeatedly / on every firm creation)."""
+    existing = qry("SELECT id FROM audit_programs WHERE firm_id=%s AND seeded_from_template_id=%s",
+                    (firm_id, template["id"]), one=True)
+    if existing:
+        return False
+    pid = qry_id(
+        "INSERT INTO audit_programs (firm_id,name,engagement_type,description,seeded_from_template_id) "
+        "VALUES (%s,%s,%s,%s,%s)",
+        (firm_id, template["name"], template["engagement_type"], template["description"], template["id"])
+    )
+    for it in items:
+        execute(
+            "INSERT INTO audit_checklist_items (program_id,sr_no,area,description,reference,priority) "
+            "VALUES (%s,%s,%s,%s,%s,%s)",
+            (pid, it["sr_no"], it["area"], it["description"], it["reference"], it["priority"])
+        )
+    return True
+
+def _seed_all_templates_to_firm(firm_id):
+    """Seed every master template into one firm (used on firm creation)."""
+    templates = qry("SELECT * FROM master_program_templates ORDER BY id")
+    count = 0
+    for t in templates:
+        items = qry("SELECT * FROM master_checklist_items WHERE template_id=%s ORDER BY sr_no", (t["id"],))
+        if _seed_template_to_firm(t, items, firm_id):
+            count += 1
+    return count
+
 def _user_out(u):
     return {k: u[k] for k in
             ["id","username","full_name","email","role","is_active","client_id","created_at","firm_id","can_switch_fy"]}
@@ -475,8 +533,9 @@ def sa_create_firm():
         "INSERT INTO firms (name,reg_no,sub_id,is_active,expires_at) VALUES (%s,%s,%s,TRUE,%s)",
         (name, reg_no, sub_id, expires)
     )
+    programs_seeded = _seed_all_templates_to_firm(fid)
     return jsonify({"id": fid, "name": name, "sub_id": sub_id,
-                    "reg_no": reg_no, "expires_at": expires}), 201
+                    "reg_no": reg_no, "expires_at": expires, "programs_seeded": programs_seeded}), 201
 
 @app.route("/api/superadmin/firms/<int:fid>", methods=["PUT"])
 @superadmin_required
@@ -536,6 +595,84 @@ def sa_regen_sub(fid):
     new_sub = "SUB-" + uuid.uuid4().hex[:12].upper()
     execute("UPDATE firms SET sub_id=%s, activated=FALSE WHERE id=%s", (new_sub, fid))
     return jsonify({"sub_id": new_sub})
+
+# ── Base Audit-Program Templates (shared across all firms) ────────
+@app.route("/api/superadmin/firms/<int:fid>/programs", methods=["GET"])
+@superadmin_required
+def sa_firm_programs(fid):
+    progs = qry("SELECT * FROM audit_programs WHERE firm_id=%s AND is_active=TRUE ORDER BY name", (fid,))
+    for p in progs:
+        p["item_count"] = qry("SELECT COUNT(*) as c FROM audit_checklist_items WHERE program_id=%s",
+                               (p["id"],), one=True)["c"]
+    return jsonify(progs)
+
+@app.route("/api/superadmin/program-templates", methods=["GET"])
+@superadmin_required
+def sa_list_templates():
+    templates = qry("SELECT * FROM master_program_templates ORDER BY created_at DESC")
+    for t in templates:
+        t["item_count"] = qry("SELECT COUNT(*) as c FROM master_checklist_items WHERE template_id=%s",
+                               (t["id"],), one=True)["c"]
+        t["firms_using"] = qry("SELECT COUNT(*) as c FROM audit_programs WHERE seeded_from_template_id=%s",
+                                (t["id"],), one=True)["c"]
+    return jsonify(templates)
+
+@app.route("/api/superadmin/program-templates/promote", methods=["POST"])
+@superadmin_required
+def sa_promote_program_to_template():
+    """Turn an existing firm's audit program into a base template, then push
+    a copy of it out to every OTHER firm that doesn't already have it. Solves:
+    'I added this checklist to one subscription, make it available to all.'"""
+    d = request.get_json() or {}
+    firm_id, program_id = d.get("firm_id"), d.get("program_id")
+    if not firm_id or not program_id:
+        return jsonify({"detail": "firm_id and program_id required"}), 400
+    prog = qry("SELECT * FROM audit_programs WHERE id=%s AND firm_id=%s", (program_id, firm_id), one=True)
+    if not prog: return jsonify({"detail": "Program not found for that firm"}), 404
+    items = qry("SELECT * FROM audit_checklist_items WHERE program_id=%s ORDER BY sr_no", (program_id,))
+    tid = qry_id(
+        "INSERT INTO master_program_templates (name,engagement_type,description) VALUES (%s,%s,%s)",
+        (prog["name"], prog["engagement_type"], prog["description"])
+    )
+    for it in items:
+        execute(
+            "INSERT INTO master_checklist_items (template_id,sr_no,area,description,reference,priority) "
+            "VALUES (%s,%s,%s,%s,%s,%s)",
+            (tid, it["sr_no"], it["area"], it["description"], it["reference"], it["priority"])
+        )
+    # Mark the source program as "the seeded copy" for its own firm too, so a
+    # later sync never creates a second copy in the firm it originally came from.
+    execute("UPDATE audit_programs SET seeded_from_template_id=%s WHERE id=%s", (tid, program_id))
+    seeded_count = 0
+    for f in qry("SELECT id FROM firms"):
+        if f["id"] == firm_id: continue
+        if _seed_template_to_firm({"id": tid, "name": prog["name"], "engagement_type": prog["engagement_type"],
+                                    "description": prog["description"]}, items, f["id"]):
+            seeded_count += 1
+    return jsonify({"template_id": tid, "firms_seeded": seeded_count}), 201
+
+@app.route("/api/superadmin/program-templates/<int:tid>/sync", methods=["POST"])
+@superadmin_required
+def sa_sync_template(tid):
+    """Backfill this template into any firm — existing or newly added since
+    the template was created — that doesn't already have its own copy.
+    Safe to run repeatedly; never touches firms that already have a copy."""
+    template = qry("SELECT * FROM master_program_templates WHERE id=%s", (tid,), one=True)
+    if not template: return jsonify({"detail": "Not found"}), 404
+    items = qry("SELECT * FROM master_checklist_items WHERE template_id=%s ORDER BY sr_no", (tid,))
+    seeded_count = 0
+    for f in qry("SELECT id FROM firms"):
+        if _seed_template_to_firm(template, items, f["id"]):
+            seeded_count += 1
+    return jsonify({"firms_seeded": seeded_count})
+
+@app.route("/api/superadmin/program-templates/<int:tid>", methods=["DELETE"])
+@superadmin_required
+def sa_delete_template(tid):
+    """Removes the master template only. Copies already given to firms are
+    each firm's own data now and are left completely untouched."""
+    execute("DELETE FROM master_program_templates WHERE id=%s", (tid,))
+    return jsonify({"message": "Template deleted. Existing firm copies were not affected."})
 
 # ═══════════════════════════════════════════════════════════════
 #  SUBSCRIPTION / ACTIVATION
@@ -1596,11 +1733,67 @@ def create_program():
         )
     return jsonify({"id": pid, "name": d["name"]}), 201
 
+@app.route("/api/programs/<int:pid>", methods=["PUT"])
+@require_role("Admin","Team Leader")
+def update_program(pid):
+    d = request.get_json() or {}
+    fields, vals = [], []
+    for f in ["name","engagement_type","description"]:
+        if f in d: fields.append(f"{f}=%s"); vals.append(d[f])
+    if not fields: return jsonify({"detail":"Nothing to update"}), 400
+    vals += [pid, g.firm_id]
+    execute(f"UPDATE audit_programs SET {','.join(fields)} WHERE id=%s AND firm_id=%s", vals)
+    return jsonify({"message":"Updated"})
+
 @app.route("/api/programs/<int:pid>", methods=["DELETE"])
 @require_role("Admin","Team Leader")
 def delete_program(pid):
     execute("DELETE FROM audit_checklist_items WHERE program_id=%s", (pid,))
     execute("DELETE FROM audit_programs WHERE id=%s AND firm_id=%s", (pid, g.firm_id))
+    return jsonify({"message":"Deleted"})
+
+def _own_program_or_404(pid):
+    """Confirm this program belongs to the caller's firm before letting them touch its items."""
+    return qry("SELECT id FROM audit_programs WHERE id=%s AND firm_id=%s", (pid, g.firm_id), one=True)
+
+@app.route("/api/programs/<int:pid>/items", methods=["POST"])
+@require_role("Admin","Team Leader")
+def add_checklist_item(pid):
+    if not _own_program_or_404(pid): return jsonify({"detail":"Not found"}), 404
+    d = request.get_json() or {}
+    if not d.get("area") or not d.get("description"):
+        return jsonify({"detail":"Area and Description are required"}), 400
+    next_sr = qry("SELECT COALESCE(MAX(sr_no),0)+1 as n FROM audit_checklist_items WHERE program_id=%s",
+                  (pid,), one=True)["n"]
+    iid = qry_id(
+        "INSERT INTO audit_checklist_items (program_id,sr_no,area,description,reference,priority) "
+        "VALUES (%s,%s,%s,%s,%s,%s)",
+        (pid, d.get("sr_no") or next_sr, d["area"], d["description"], d.get("reference"), d.get("priority","Medium"))
+    )
+    return jsonify({"id": iid}), 201
+
+@app.route("/api/checklist-items/<int:iid>", methods=["PUT"])
+@require_role("Admin","Team Leader")
+def update_checklist_item(iid):
+    item = qry("SELECT ci.*, ap.firm_id FROM audit_checklist_items ci "
+               "JOIN audit_programs ap ON ci.program_id=ap.id WHERE ci.id=%s", (iid,), one=True)
+    if not item or item["firm_id"] != g.firm_id: return jsonify({"detail":"Not found"}), 404
+    d = request.get_json() or {}
+    fields, vals = [], []
+    for f in ["sr_no","area","description","reference","priority"]:
+        if f in d: fields.append(f"{f}=%s"); vals.append(d[f])
+    if not fields: return jsonify({"detail":"Nothing to update"}), 400
+    vals.append(iid)
+    execute(f"UPDATE audit_checklist_items SET {','.join(fields)} WHERE id=%s", vals)
+    return jsonify({"message":"Updated"})
+
+@app.route("/api/checklist-items/<int:iid>", methods=["DELETE"])
+@require_role("Admin","Team Leader")
+def delete_checklist_item(iid):
+    item = qry("SELECT ci.*, ap.firm_id FROM audit_checklist_items ci "
+               "JOIN audit_programs ap ON ci.program_id=ap.id WHERE ci.id=%s", (iid,), one=True)
+    if not item or item["firm_id"] != g.firm_id: return jsonify({"detail":"Not found"}), 404
+    execute("DELETE FROM audit_checklist_items WHERE id=%s", (iid,))
     return jsonify({"message":"Deleted"})
 
 # ═══════════════════════════════════════════════════════════════
