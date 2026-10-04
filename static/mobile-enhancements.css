@@ -1,0 +1,67 @@
+/* CA FirmHub — mobile / PWA enhancements (additive; desktop unchanged) */
+.menu-btn{display:none;background:none;border:none;padding:8px;border-radius:8px;cursor:pointer;color:var(--icai-navy);align-items:center;justify-content:center}
+.menu-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2}
+.side-overlay{display:none;position:fixed;inset:0;background:rgba(0,34,68,.45);z-index:90;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.side-overlay.show{display:block}
+body.side-open{overflow:hidden}
+
+@media (max-width: 900px) {
+  :root { --sw: 280px; }
+  .menu-btn{display:inline-flex}
+  .side{
+    position:fixed;left:0;top:0;bottom:0;z-index:100;
+    transform:translateX(-105%);
+    transition:transform .28s cubic-bezier(.4,0,.2,1);
+    box-shadow:none;width:var(--sw);
+  }
+  .side.open{transform:translateX(0);box-shadow:8px 0 32px rgba(0,0,0,.25)}
+  .side-overlay.show{display:block}
+  .main{width:100%}
+  .ph{padding:0 12px 0 8px;height:56px}
+  .ph h2{font-size:15px}
+  .ph-icon{display:none}
+  .pb{padding:14px 12px}
+  .sg{grid-template-columns:repeat(2,1fr);gap:10px}
+  .sc{padding:14px}
+  .sc .sv{font-size:22px}
+  .fr{grid-template-columns:1fr}
+  .login-wrap{flex-direction:column;width:94%;max-width:420px;border-radius:14px}
+  .login-brand{width:100%;padding:28px 24px 20px;border-radius:14px 14px 0 0}
+  .login-brand .lb-logo{width:72px;height:72px;margin-bottom:12px}
+  .login-brand h1{font-size:20px}
+  .login-brand p{font-size:12px;margin-bottom:16px}
+  .login-brand .lb-features{display:none}
+  .login-box{padding:28px 24px 36px}
+  .sub-box{width:92%;max-width:400px;padding:32px 24px}
+  .md{width:96%;max-height:92vh;border-radius:12px}
+  .md-b{padding:16px}
+  .toolbar{gap:6px}
+  .toolbar select,.toolbar input,.btn{font-size:12.5px}
+  .dt{font-size:12px}
+  .dt thead th,.dt tbody td{padding:8px 10px}
+  .card-h{padding:12px 14px;font-size:13px}
+  .card-b{padding:14px}
+  .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab{padding:10px 14px;white-space:nowrap}
+  .tc{top:10px;right:10px;left:10px;align-items:stretch}
+  .tt{min-width:0;width:100%}
+  #fy-panel,#alert-panel{right:-8px;width:min(320px,92vw)}
+  .side-brand span{font-size:13px}
+  .ni{padding:11px 14px;font-size:14px}
+  .btn{min-height:36px}
+  .btn-xs{min-height:30px;padding:5px 10px}
+  input,select,textarea,button{font-size:16px !important}
+  .login-box input,.sub-box input{font-size:16px !important}
+}
+
+@media (max-width: 480px) {
+  .sg{grid-template-columns:1fr}
+  .ph-right .ubadge, #un-top{display:none}
+  .sc .sv{font-size:20px}
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  .side{padding-top:env(safe-area-inset-top)}
+  .ph{padding-top:env(safe-area-inset-top);height:calc(56px + env(safe-area-inset-top))}
+  #sub-screen,#login-screen{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+}

@@ -1,7 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
 Downloads the last known-good main.py from GitHub raw if needed,
-optionally injects the Asset Links route, and exposes `app` for gunicorn.
+injects Asset Links + mobile PWA hooks, and exposes `app` for gunicorn.
 """
 import urllib.request
 from pathlib import Path
@@ -55,3 +55,41 @@ _src = _inject_assetlinks(_load_source())
 _ns = {"__name__": "main", "__file__": str(Path(__file__).resolve())}
 exec(compile(_src, str(Path(__file__).resolve()), "exec"), _ns)
 app = _ns["app"]
+
+# Mobile / PWA: inject CSS+JS into served index without replacing large HTML
+from flask import Response as _Response
+
+_MOBILE_HEAD = """
+<meta name="theme-color" content="#003366">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CA FirmHub">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="/static/app_logo.png">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="stylesheet" href="/static/mobile-enhancements.css">
+"""
+_MOBILE_BODY = '<script src="/static/mobile-enhancements.js" defer></script>\n'
+
+
+def _serve_index_with_mobile():
+    path = Path(__file__).resolve().parent / "static" / "index.html"
+    html = path.read_text(encoding="utf-8")
+    if "mobile-enhancements.css" not in html:
+        html = html.replace("</head>", _MOBILE_HEAD + "</head>", 1)
+        html = html.replace(
+            'content="width=device-width, initial-scale=1.0"',
+            'content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"',
+            1,
+        )
+    if "mobile-enhancements.js" not in html:
+        html = html.replace("</body>", _MOBILE_BODY + "</body>", 1)
+    return _Response(html, mimetype="text/html")
+
+
+try:
+    app.view_functions["index"] = lambda: _serve_index_with_mobile()
+except Exception:
+    @app.route("/", endpoint="index_mobile_override")
+    def _index_mobile_override():
+        return _serve_index_with_mobile()
