@@ -1,0 +1,39 @@
+    dep_date:   get('tds-dep-date'),
+        dd_days:    parseInt(document.querySelector(`.tds-r-dd-days-${idx}`)?.textContent)||0,
+        dd_months:  parseInt(document.querySelector(`.tds-r-dd-months-${idx}`)?.textContent)||0,
+        dd_int:     parseInt((document.querySelector(`.tds-r-dd-int-${idx}`)?.textContent||'0').replace(/[₹,—]/g,''))||0,
+        dp_days:    parseInt(document.querySelector(`.tds-r-dp-days-${idx}`)?.textContent)||0,
+        dp_months:  parseInt(document.querySelector(`.tds-r-dp-months-${idx}`)?.textContent)||0,
+        dp_int:     parseInt((document.querySelector(`.tds-r-dp-int-${idx}`)?.textContent||'0').replace(/[₹,—]/g,''))||0,
+        total_int:  parseInt((document.querySelector(`.tds-r-total-${idx}`)?.textContent||'0').replace(/[₹,—]/g,''))||0,
+      });
+    });
+
+    if (!rows.length) return toast('No data to export', 'err');
+
+    toast('Generating Excel…', 'info');
+    const payload = {
+      assessee: document.getElementById('tds-name')?.value || '',
+      tan:      document.getElementById('tds-tan')?.value || '',
+      ay:       document.getElementById('tds-ay')?.value || '',
+      quarter:  document.getElementById('tds-qtr')?.value || '',
+      rows
+    };
+
+    const r = await fetch('/api/tools/tds-interest/export-excel', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const b = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `TDS_Interest_201_1A_${(payload.assessee||'Report').replace(/ /g,'_')}.xlsx`;
+    a.click();
+    toast('Excel exported!');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+</script>
+</body>
+</html>
