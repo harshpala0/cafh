@@ -76,14 +76,19 @@ def _serve_index_with_mobile():
     path = Path(__file__).resolve().parent / "static" / "index.html"
     html = path.read_text(encoding="utf-8")
     if "mobile-enhancements.css" not in html:
-        html = html.replace("</head>", _MOBILE_HEAD + "</head>", 1)
+        # Only replace the real document </head>, not any occurrence inside JS strings
+        if "</head>" in html:
+            html = html.replace("</head>", _MOBILE_HEAD + "</head>", 1)
         html = html.replace(
             'content="width=device-width, initial-scale=1.0"',
             'content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"',
             1,
         )
     if "mobile-enhancements.js" not in html:
-        html = html.replace("</body>", _MOBILE_BODY + "</body>", 1)
+        # CRITICAL: use the LAST </body> — earlier ones appear inside JS template strings
+        idx = html.rfind("</body>")
+        if idx != -1:
+            html = html[:idx] + _MOBILE_BODY + html[idx:]
     return _Response(html, mimetype="text/html")
 
 
