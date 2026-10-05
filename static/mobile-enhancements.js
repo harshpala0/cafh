@@ -1,5 +1,15 @@
-/* CA FirmHub — mobile drawer + PWA registration */
+/* CA FirmHub — mobile drawer + PWA + Client portal redirect */
 (function () {
+  // If logged-in user is Client role, send them to the dedicated portal
+  try {
+    var au = JSON.parse(localStorage.getItem('au') || 'null');
+    var at = localStorage.getItem('at');
+    if (at && au && au.role === 'Client' && !location.pathname.startsWith('/portal')) {
+      location.replace('/portal');
+      return;
+    }
+  } catch (e) {}
+
   function ensureOverlay() {
     if (document.getElementById('side-overlay')) return;
     var lay = document.querySelector('.lay');
