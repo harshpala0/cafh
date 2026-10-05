@@ -1,6 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Client Portal, Compliance, Staff UI, Ops UI.
+Injects mobile/PWA, Client Portal, Compliance, Staff UI, Ops UI, Notify.
 """
 import urllib.request
 from pathlib import Path
@@ -71,6 +71,7 @@ _MOBILE_BODY = (
     '<script src="/static/compliance-ui.js" defer></script>\n'
     '<script src="/static/staff-ui.js" defer></script>\n'
     '<script src="/static/ops-ui.js" defer></script>\n'
+    '<script src="/static/notify-ui.js" defer></script>\n'
 )
 
 
@@ -90,7 +91,7 @@ def _serve_index_with_mobile():
         if idx != -1:
             html = html[:idx] + _MOBILE_BODY + html[idx:]
     else:
-        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js"):
+        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js", "notify-ui.js"):
             tag = f'<script src="/static/{script}" defer></script>'
             if script not in html and "</body>" in html:
                 idx = html.rfind("</body>")
@@ -146,3 +147,16 @@ try:
     })
 except Exception as _ops_err:
     print("[CA FirmHub] Ops enhance not loaded:", _ops_err)
+
+
+try:
+    from notify_enhance import register_notify_enhance
+    register_notify_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _notify_err:
+    print("[CA FirmHub] Notify enhance not loaded:", _notify_err)
