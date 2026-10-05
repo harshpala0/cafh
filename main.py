@@ -1,7 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
 Downloads the last known-good main.py from GitHub raw if needed,
-injects Asset Links + mobile PWA hooks + Client Portal, and exposes `app` for gunicorn.
+injects Asset Links + mobile PWA hooks + Client Portal + Compliance, and exposes `app` for gunicorn.
 """
 import urllib.request
 from pathlib import Path
@@ -69,7 +69,7 @@ _MOBILE_HEAD = """
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/mobile-enhancements.css">
 """
-_MOBILE_BODY = '<script src="/static/mobile-enhancements.js" defer></script>\n'
+_MOBILE_BODY = '<script src="/static/mobile-enhancements.js" defer></script>\n<script src="/static/compliance-ui.js" defer></script>\n'
 
 
 def _serve_index_with_mobile():
@@ -84,7 +84,6 @@ def _serve_index_with_mobile():
             1,
         )
     if "mobile-enhancements.js" not in html:
-        # CRITICAL: use the LAST </body> — earlier ones appear inside JS template strings
         idx = html.rfind("</body>")
         if idx != -1:
             html = html[:idx] + _MOBILE_BODY + html[idx:]
@@ -113,3 +112,18 @@ try:
     })
 except Exception as _portal_err:
     print("[CA FirmHub] Portal module not loaded:", _portal_err)
+
+
+# ── Compliance Calendar enhancements (additive) ───────────
+try:
+    from compliance_enhance import register_compliance_enhance
+    register_compliance_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+        "qry_id": _ns.get("qry_id"),
+    })
+except Exception as _comp_err:
+    print("[CA FirmHub] Compliance enhance not loaded:", _comp_err)
