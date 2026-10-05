@@ -1,6 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Client Portal, Compliance, Staff UI, Ops UI, Notify.
+Injects mobile/PWA, Client Portal, Compliance, Staff UI, Ops UI, Notify, Cron.
 """
 import urllib.request
 from pathlib import Path
@@ -13,12 +13,15 @@ ASSETLINKS_SNIPPET = '''
 @app.route("/.well-known/assetlinks.json")
 def assetlinks():
     import json as _json
+    import os as _os
     data = [{
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {
             "namespace": "android_app",
-            "package_name": "com.cafirmhub.app",
-            "sha256_cert_fingerprints": ["REPLACE_WITH_YOUR_KEYSTORE_SHA256"]
+            "package_name": _os.environ.get("TWA_PACKAGE", "com.cafirmhub.app"),
+            "sha256_cert_fingerprints": [
+                _os.environ.get("TWA_SHA256", "REPLACE_WITH_YOUR_KEYSTORE_SHA256")
+            ]
         }
     }]
     return Response(_json.dumps(data), mimetype="application/json")
@@ -160,3 +163,16 @@ try:
     })
 except Exception as _notify_err:
     print("[CA FirmHub] Notify enhance not loaded:", _notify_err)
+
+
+try:
+    from cron_enhance import register_cron_enhance
+    register_cron_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _cron_err:
+    print("[CA FirmHub] Cron enhance not loaded:", _cron_err)
