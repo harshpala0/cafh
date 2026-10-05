@@ -1,7 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
 Downloads the last known-good main.py from GitHub raw if needed,
-injects Asset Links + mobile PWA hooks, and exposes `app` for gunicorn.
+injects Asset Links + mobile PWA hooks + Client Portal, and exposes `app` for gunicorn.
 """
 import urllib.request
 from pathlib import Path
@@ -76,7 +76,6 @@ def _serve_index_with_mobile():
     path = Path(__file__).resolve().parent / "static" / "index.html"
     html = path.read_text(encoding="utf-8")
     if "mobile-enhancements.css" not in html:
-        # Only replace the real document </head>, not any occurrence inside JS strings
         if "</head>" in html:
             html = html.replace("</head>", _MOBILE_HEAD + "</head>", 1)
         html = html.replace(
@@ -98,3 +97,19 @@ except Exception:
     @app.route("/", endpoint="index_mobile_override")
     def _index_mobile_override():
         return _serve_index_with_mobile()
+
+
+# ── Client Portal (additive) ──────────────────────────────
+try:
+    from portal import register_portal
+    register_portal(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+        "upload_to_r2": _ns.get("_upload_to_r2"),
+        "hash_pw": _ns.get("hash_pw"),
+    })
+except Exception as _portal_err:
+    print("[CA FirmHub] Portal module not loaded:", _portal_err)
