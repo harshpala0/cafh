@@ -1,104 +1,93 @@
-# CA FirmHub — Android / Play Store packaging
+# CA FirmHub — Android (Play Store) via Trusted Web Activity
 
-The web app is a Progressive Web App (PWA).  
-To list it on the **Google Play Store** while keeping the same online backend, use a **Trusted Web Activity (TWA)** via [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap).
-
-This keeps 100% feature parity with the website and does not require rewriting the app in Flutter/React Native.
+Ship the live site **https://cafh.onrender.com** as an installable Play Store app using **Bubblewrap** (TWA).
+No separate native UI — same backend, same features, mobile-optimised PWA.
 
 ## Prerequisites
 
 - Node.js 18+
-- Java JDK 17
+- JDK 17
 - Android SDK / command-line tools
-- A domain that serves the live CA FirmHub (HTTPS required)
-- Google Play Console developer account
+- Google Play Developer account
+- Live app domain: `cafh.onrender.com`
 
-## 1. Deploy the enhanced web app first
-
-Push the PWA changes (manifest, service worker, mobile UI) to your Render (or other) deployment and confirm:
-
-- `https://YOUR-DOMAIN/` loads and is installable
-- `/static/manifest.json` is reachable
-- `/static/sw.js` is reachable
-- Chrome → Application → Manifest shows no errors
-
-## 2. Generate the Android project with Bubblewrap
+## 1. Generate signing key
 
 ```bash
-npm install -g @bubblewrap/cli
-bubblewrap init --manifest https://YOUR-DOMAIN/static/manifest.json
+keytool -genkey -v -keystore cafirmhub.keystore -alias cafirmhub \
+  -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-Answer the prompts:
-
-- Package ID (example): `com.cafirmhub.app`
-- App name: `CA FirmHub`
-- Launcher name: `FirmHub`
-- Display mode: `standalone`
-- Theme colour: `#003366`
-- Background colour: `#003366`
-- Start URL: `/`
-- Icon: use the generated or upload `app_logo.png`
-
-Bubblewrap creates a full Android project.
-
-## 3. Digital Asset Links (required for Play Store)
-
-Create a file on your server:
-
-`https://YOUR-DOMAIN/.well-known/assetlinks.json`
-
-Content (replace SHA256 and package name after first build):
-
-```json
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.cafirmhub.app",
-    "sha256_cert_fingerprints": ["AA:BB:CC:..."]
-  }
-}]
-```
-
-Get the fingerprint after building the signing key:
+Get SHA-256:
 
 ```bash
-keytool -list -v -keystore android.keystore
+keytool -list -v -keystore cafirmhub.keystore -alias cafirmhub
 ```
 
-## 4. Build the release AAB
+Copy the **SHA-256** fingerprint.
+
+## 2. Publish Digital Asset Links
+
+Route `/.well-known/assetlinks.json` is provided by the app.
+
+Set on Render:
+
+```
+TWA_PACKAGE=com.cafirmhub.app
+TWA_SHA256=AA:BB:CC:...   # from keytool (colon-separated hex)
+```
+
+Verify:
+
+```
+https://cafh.onrender.com/.well-known/assetlinks.json
+```
+
+Google tester: https://developers.google.com/digital-asset-links/tools/generator
+
+## 3. Bubblewrap init
+
+```bash
+npm i -g @bubblewrap/cli
+bubblewrap init --manifest https://cafh.onrender.com/static/manifest.json
+```
+
+| Field | Value |
+|-------|--------|
+| Package ID | `com.cafirmhub.app` |
+| Name | CA FirmHub |
+| Host | `cafh.onrender.com` |
+| Start URL | `/` |
+| Display | `standalone` |
+
+Use the same keystore as step 1. See also `android/twa-manifest.json`.
+
+## 4. Build & release
 
 ```bash
 bubblewrap build
 ```
 
-This produces an `.aab` file ready for Play Console upload.
+Upload the **AAB** to Play Console → Internal testing → Production.
 
 ## 5. Play Console checklist
 
-- Create new app → “CA FirmHub”
-- Category: Business / Productivity
-- Upload the AAB
-- Complete store listing (screenshots from a real phone, short description, privacy policy URL)
-- Content rating questionnaire
-- Target audience & news apps declarations
-- Privacy policy must mention data stored on your servers (Neon / Render)
+- [ ] App name, short & full description
+- [ ] Icon 512×512 (`static/app_logo.png`)
+- [ ] Feature graphic 1024×500
+- [ ] Privacy policy URL
+- [ ] Content rating questionnaire
+- [ ] Asset Links verified (no URL bar in TWA)
 
-## Alternative: Capacitor (if you prefer more native control later)
+## 6. Updates
 
-```bash
-npm init @capacitor/app
-# point webDir to a built static export of the SPA
-npx cap add android
-npx cap sync
-```
+Most product updates need **no new Play release** — TWA loads the live website.
+Rebuild the AAB only for package/icon/signing changes.
 
-TWA/Bubblewrap is simpler and keeps a single codebase.
+## Troubleshooting
 
-## Important notes
-
-- The app **requires internet** for all data (API calls). Offline only shows the cached shell.
-- Do **not** change existing API contracts or desktop layout; the mobile CSS is additive only.
-- Test thoroughly on real Android devices before submitting.
-- Keep the same SECRET_KEY / DATABASE_URL; no backend changes needed for the mobile wrapper.
+| Issue | Fix |
+|-------|-----|
+| Chrome shows URL bar | Asset Links mismatch (package / SHA-256 / domain) |
+| White screen | HTTPS, service worker, manifest `start_url` |
+| Login loops | Cookies on domain (Secure, SameSite) |
