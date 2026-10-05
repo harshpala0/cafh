@@ -1,6 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Client Portal, Compliance, Staff UI, Ops UI, Notify, Cron.
+Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Messaging.
 """
 import urllib.request
 from pathlib import Path
@@ -75,6 +75,7 @@ _MOBILE_BODY = (
     '<script src="/static/staff-ui.js" defer></script>\n'
     '<script src="/static/ops-ui.js" defer></script>\n'
     '<script src="/static/notify-ui.js" defer></script>\n'
+    '<script src="/static/messaging-ui.js" defer></script>\n'
 )
 
 
@@ -94,7 +95,7 @@ def _serve_index_with_mobile():
         if idx != -1:
             html = html[:idx] + _MOBILE_BODY + html[idx:]
     else:
-        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js", "notify-ui.js"):
+        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js", "notify-ui.js", "messaging-ui.js"):
             tag = f'<script src="/static/{script}" defer></script>'
             if script not in html and "</body>" in html:
                 idx = html.rfind("</body>")
@@ -176,3 +177,16 @@ try:
     })
 except Exception as _cron_err:
     print("[CA FirmHub] Cron enhance not loaded:", _cron_err)
+
+
+try:
+    from messaging_enhance import register_messaging_enhance
+    register_messaging_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _msg_err:
+    print("[CA FirmHub] Messaging enhance not loaded:", _msg_err)
