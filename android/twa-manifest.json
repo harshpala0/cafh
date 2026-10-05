@@ -1,0 +1,19 @@
+{
+  "packageId": "com.cafirmhub.app",
+  "host": "cafh.onrender.com",
+  "name": "CA FirmHub",
+  "launcherName": "CA FirmHub",
+  "display": "standalone",
+  "themeColor": "#003366",
+  "navigationColor": "#003366",
+  "backgroundColor": "#F0F4F8",
+  "startUrl": "/",
+  "iconUrl": "https://cafh.onrender.com/static/app_logo.png",
+  "maskableIconUrl": "https://cafh.onrender.com/static/app_logo.png",
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "isChromeOSOnly": false,
+  "fallbackType": "customtabs",
+  "features": {},
+  "webManifestUrl": "https://cafh.onrender.com/static/manifest.json"
+}
