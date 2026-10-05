@@ -1,7 +1,8 @@
 """
 CA FirmHub — self-healing bootstrap.
 Downloads the last known-good main.py from GitHub raw if needed,
-injects Asset Links + mobile PWA hooks + Client Portal + Compliance, and exposes `app` for gunicorn.
+injects Asset Links + mobile PWA hooks + Client Portal + Compliance + Staff UI,
+and exposes `app` for gunicorn.
 """
 import urllib.request
 from pathlib import Path
@@ -56,7 +57,6 @@ _ns = {"__name__": "main", "__file__": str(Path(__file__).resolve())}
 exec(compile(_src, str(Path(__file__).resolve()), "exec"), _ns)
 app = _ns["app"]
 
-# Mobile / PWA: inject CSS+JS into served index without replacing large HTML
 from flask import Response as _Response
 
 _MOBILE_HEAD = """
@@ -69,7 +69,11 @@ _MOBILE_HEAD = """
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/mobile-enhancements.css">
 """
-_MOBILE_BODY = '<script src="/static/mobile-enhancements.js" defer></script>\n<script src="/static/compliance-ui.js" defer></script>\n'
+_MOBILE_BODY = (
+    '<script src="/static/mobile-enhancements.js" defer></script>\n'
+    '<script src="/static/compliance-ui.js" defer></script>\n'
+    '<script src="/static/staff-ui.js" defer></script>\n'
+)
 
 
 def _serve_index_with_mobile():
@@ -87,6 +91,11 @@ def _serve_index_with_mobile():
         idx = html.rfind("</body>")
         if idx != -1:
             html = html[:idx] + _MOBILE_BODY + html[idx:]
+    elif "staff-ui.js" not in html:
+        # older injection without staff-ui — append before last </body>
+        idx = html.rfind("</body>")
+        if idx != -1:
+            html = html[:idx] + '<script src="/static/staff-ui.js" defer></script>\n' + html[idx:]
     return _Response(html, mimetype="text/html")
 
 
@@ -98,7 +107,6 @@ except Exception:
         return _serve_index_with_mobile()
 
 
-# ── Client Portal (additive) ──────────────────────────────
 try:
     from portal import register_portal
     register_portal(app, {
@@ -114,7 +122,6 @@ except Exception as _portal_err:
     print("[CA FirmHub] Portal module not loaded:", _portal_err)
 
 
-# ── Compliance Calendar enhancements (additive) ───────────
 try:
     from compliance_enhance import register_compliance_enhance
     register_compliance_enhance(app, {
