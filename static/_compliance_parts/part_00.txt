@@ -1,0 +1,109 @@
+"""
+CA FirmHub — Compliance Calendar enhancements (additive).
+- Richer FY seed (monthly GSTR-1/3B, PF/ESI, etc.)
+- Per-client compliance packs → auto calendar rows
+- Generate staff tasks from calendar items
+- Auto-mark Missed for past-due Upcoming items
+"""
+from datetime import date, timedelta
+from functools import wraps
+from calendar import monthrange
+from flask import request, jsonify, g
+
+
+def register_compliance_enhance(app, helpers):
+    qry = helpers["qry"]
+    execute = helpers["execute"]
+    login_required = helpers["login_required"]
+    require_role = helpers["require_role"]
+    log_action = helpers.get("log_action", lambda *a, **k: None)
+
+    def _ensure():
+        # client-level link + pack metadata (safe migrations)
+        execute("ALTER TABLE compliance_calendar ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id)")
+        execute("ALTER TABLE compliance_calendar ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual'")
+        execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS compliance_packs TEXT DEFAULT ''")
+        # packs stored as comma-separated: GST_MONTHLY,GST_QRMP,TDS,ITR,ROC,PF_ESI
+        execute("CREATE INDEX IF NOT EXISTS idx_comp_client ON compliance_calendar(client_id)")
+        execute("CREATE INDEX IF NOT EXISTS idx_comp_firm_due ON compliance_calendar(firm_id, due_date)")
+
+    try:
+        _ensure()
+    except Exception as e:
+        print("[compliance] ensure warning:", e)
+
+    def _parse_fy(fy):
+        start = int(fy.split("-")[0])
+        return start, start + 1
+
+    def _last_day(y, m):
+        return date(y, m, monthrange(y, m)[1])
+
+    def _firm_deadlines(start_yr, end_yr):
+        """Statutory firm-level dates for FY start_yr-(start_yr+1)."""
+        items = []
+        # Monthly GSTR-1 (11th of next month) and GSTR-3B (20th of next month) for Apr–Mar
+        for i, (y, m) in enumerate([(start_yr, m) for m in range(4, 13)] + [(end_yr, m) for m in range(1, 4)]):
+            # due month = next month
+            if m == 12:
+                dy, dm = y + 1, 1
+            else:
+                dy, dm = y, m + 1
+            mon = date(y, m, 1).strftime("%b %Y")
+            items.append((f"GSTR-1 — {mon}", "GST", date(dy, dm, 11).isoformat()))
+            items.append((f"GSTR-3B — {mon}", "GST", date(dy, dm, 20).isoformat()))
+
+        # Quarterly GSTR-1 (QRMP) — still useful as firm reminders
+        items += [
+            (f"GSTR-1 (QRMP) Q1 Apr–Jun", "GST", f"{start_yr}-07-13"),
+            (f"GSTR-1 (QRMP) Q2 Jul–Sep", "GST", f"{start_yr}-10-13"),
+            (f"GSTR-1 (QRMP) Q3 Oct–Dec", "GST", f"{end_yr}-01-13"),
+            (f"GSTR-1 (QRMP) Q4 Jan–Mar", "GST", f"{end_yr}-04-13"),
+            ("GSTR-9 Annual Return", "GST", f"{end_yr}-12-31"),
+            ("GSTR-9C Reconciliation (if applicable)", "GST", f"{end_yr}-12-31"),
+        ]
+        # TDS
+        items += [
+            ("TDS Return Q1 (24Q/26Q/27Q)", "TDS", f"{start_yr}-07-31"),
+            ("TDS Return Q2", "TDS", f"{start_yr}-10-31"),
+            ("TDS Return Q3", "TDS", f"{end_yr}-01-31"),
+            ("TDS Return Q4", "TDS", f"{end_yr}-05-31"),
+            ("Form 16 / 16A issuance", "TDS", f"{end_yr}-06-15"),
+        ]
+        # ITR / Advance tax
+        items += [
+            ("Advance Tax — 15 Jun (15%)", "ITR", f"{start_yr}-06-15"),
+            ("Advance Tax — 15 Sep (45%)", "ITR", f"{start_yr}-09-15"),
+            ("Advance Tax — 15 Dec (75%)", "ITR", f"{start_yr}-12-15"),
+            ("Advance Tax — 15 Mar (100%)", "ITR", f"{end_yr}-03-15"),
+            ("ITR — Non-audit (Individuals/HUF)", "ITR", f"{end_yr}-07-31"),
+            ("ITR — Tax audit / Companies", "ITR", f"{end_yr}-10-31"),
+            ("ITR — Transfer pricing cases", "ITR", f"{end_yr}-11-30"),
+        ]
+        # ROC
+        items += [
+            ("AGM holding deadline", "ROC", f"{end_yr}-09-30"),
+            ("AOC-4 Financial Statements", "ROC", f"{end_yr}-10-29"),
+            ("MGT-7 Annual Return", "ROC", f"{end_yr}-11-29"),
+            ("DIR-3 KYC (directors)", "ROC", f"{end_yr}-09-30"),
+        ]
+        # Labour
+        items += [
+            ("PF ECR monthly (reminder)", "Other", f"{end_yr}-04-15"),
+            ("ESI contribution monthly (reminder)", "Other", f"{end_yr}-04-15"),
+        ]
+        return items
+
+    def _client_deadlines(packs, client_name, start_yr, end_yr):
+        packs = set((packs or "").upper().replace(" ", "").split(","))
+        packs.discard("")
+        items = []
+        name = client_name or "Client"
+        if "GST_MONTHLY" in packs:
+            for y, m in [(start_yr, m) for m in range(4, 13)] + [(end_yr, m) for m in range(1, 4)]:
+                dy, dm = (y + 1, 1) if m == 12 else (y, m + 1)
+                mon = date(y, m, 1).strftime("%b %Y")
+                items.append((f"{name}: GSTR-1 {mon}", "GST", date(dy, dm, 11).isoformat()))
+                items.append((f"{name}: GSTR-3B {mon}", "GST", date(dy, dm, 20).isoformat()))
+        if "GST_QRMP" in packs:
+            items += [
