@@ -1,8 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Downloads the last known-good main.py from GitHub raw if needed,
-injects Asset Links + mobile PWA hooks + Client Portal + Compliance + Staff UI,
-and exposes `app` for gunicorn.
+Injects mobile/PWA, Client Portal, Compliance, Staff UI, Ops UI.
 """
 import urllib.request
 from pathlib import Path
@@ -14,7 +12,6 @@ CACHE = Path(__file__).resolve().parent / "static" / "_main_chunks" / "full_main
 ASSETLINKS_SNIPPET = '''
 @app.route("/.well-known/assetlinks.json")
 def assetlinks():
-    """Digital Asset Links for Android TWA / Play Store."""
     import json as _json
     data = [{
         "relation": ["delegate_permission/common.handle_all_urls"],
@@ -73,6 +70,7 @@ _MOBILE_BODY = (
     '<script src="/static/mobile-enhancements.js" defer></script>\n'
     '<script src="/static/compliance-ui.js" defer></script>\n'
     '<script src="/static/staff-ui.js" defer></script>\n'
+    '<script src="/static/ops-ui.js" defer></script>\n'
 )
 
 
@@ -91,11 +89,12 @@ def _serve_index_with_mobile():
         idx = html.rfind("</body>")
         if idx != -1:
             html = html[:idx] + _MOBILE_BODY + html[idx:]
-    elif "staff-ui.js" not in html:
-        # older injection without staff-ui — append before last </body>
-        idx = html.rfind("</body>")
-        if idx != -1:
-            html = html[:idx] + '<script src="/static/staff-ui.js" defer></script>\n' + html[idx:]
+    else:
+        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js"):
+            tag = f'<script src="/static/{script}" defer></script>'
+            if script not in html and "</body>" in html:
+                idx = html.rfind("</body>")
+                html = html[:idx] + tag + "\n" + html[idx:]
     return _Response(html, mimetype="text/html")
 
 
@@ -134,3 +133,16 @@ try:
     })
 except Exception as _comp_err:
     print("[CA FirmHub] Compliance enhance not loaded:", _comp_err)
+
+
+try:
+    from ops_enhance import register_ops_enhance
+    register_ops_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _ops_err:
+    print("[CA FirmHub] Ops enhance not loaded:", _ops_err)
