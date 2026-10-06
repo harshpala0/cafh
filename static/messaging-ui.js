@@ -1,7 +1,4 @@
-/* CA FirmHub — Client messaging UI (Designed & Built by Harsh Pala)
-   1) Save your email & phone (firm settings)
-   2) Select clients → send to their contact_email / contact_phone
-*/
+/* CA FirmHub — Client messaging UI (Designed & Built by Harsh Pala) */
 (function () {
   if (window.__cafhMessagingUI) return;
   window.__cafhMessagingUI = true;
@@ -39,20 +36,27 @@
     try {
       s = await api('/api/ops/messaging/settings');
     } catch (e) {
-      toast(e.message || 'Could not load settings', 'err');
+      toast((e && e.message) ? e.message : 'Could not load settings', 'err');
       return;
     }
     openModal(
       'My contact details (for client messages)',
-      '<p style="font-size:12px;color:#4A5568;margin-bottom:12px">Save <strong>your</strong> email &amp; phone once. When you message clients, replies can come to this email. Messages go to each client&rsquo;s contact details from Client Ledger.</p>' +
+      '<p style="font-size:12px;color:#4A5568;margin-bottom:12px">Save <strong>your</strong> email &amp; phone once. Messages go to each client&rsquo;s contact details from Client Ledger.</p>' +
       '<div class="fg"><label style="font-size:11px;font-weight:600">Your / firm display name</label>' +
       '<input id="cafh-msg-name" value="' + esc(s.notify_from_name || '') + '" placeholder="e.g. Harsh Pala &amp; Associates" style="width:100%;padding:8px;margin-top:4px;border:1.5px solid #D1DAEA;border-radius:6px"></div>' +
       '<div class="fg" style="margin-top:10px"><label style="font-size:11px;font-weight:600">Your email</label>' +
       '<input id="cafh-msg-email" type="email" value="' + esc(s.notify_email || '') + '" placeholder="you@firm.com" style="width:100%;padding:8px;margin-top:4px;border:1.5px solid #D1DAEA;border-radius:6px"></div>' +
       '<div class="fg" style="margin-top:10px"><label style="font-size:11px;font-weight:600">Your phone (WhatsApp)</label>' +
       '<input id="cafh-msg-phone" value="' + esc(s.notify_phone || '') + '" placeholder="9198xxxxxxxx" style="width:100%;padding:8px;margin-top:4px;border:1.5px solid #D1DAEA;border-radius:6px"></div>' +
-      '<p style="font-size:11px;color:#718096;margin-top:12px">Server status: Email ' + (s.smtp_ready ? '✓ ready' : '✗ set SMTP_* on Render') +
-      ' · WhatsApp ' + (s.whatsapp_ready ? '✓ ready' : '✗ set WHATSAPP_WEBHOOK_URL on Render') + '</p>',
+      '<p style="font-size:11px;margin-top:12px;padding:10px;border-radius:8px;background:' + (s.smtp_ready ? '#E6F4EA' : '#FEF3C7') + ';color:#1A202C">' +
+      (s.smtp_ready
+        ? '✓ Email server (SMTP) is configured — you can send mail to clients.'
+        : '⚠ Email will not send until you add SMTP settings on Render:<br>SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM') +
+      '<br>' +
+      (s.whatsapp_ready
+        ? '✓ WhatsApp webhook is configured.'
+        : '⚠ WhatsApp needs WHATSAPP_WEBHOOK_URL on Render (optional).') +
+      '</p>',
       '<button class="btn btn-o" onclick="(window.cM?cM():document.getElementById(\'cafh-modal\')?.remove())">Cancel</button>' +
       '<button class="btn btn-p" onclick="cafhMsgSaveSettings()">Save</button>'
     );
@@ -99,7 +103,7 @@
 
     openModal(
       'Message clients',
-      '<p style="font-size:12px;color:#4A5568;margin-bottom:8px">Select clients. Mail / WhatsApp goes to <strong>their</strong> contact email &amp; phone from Client Ledger.</p>' +
+      '<p style="font-size:12px;color:#4A5568;margin-bottom:8px">Select clients. Mail goes to <strong>their</strong> contact email from Client Ledger. Requires SMTP on Render.</p>' +
       '<div style="max-height:180px;overflow:auto;margin-bottom:12px;border:1px solid #E4EAF2;border-radius:8px;padding:4px 10px">' + list + '</div>' +
       '<div class="fg"><label style="font-size:11px;font-weight:600">Channel</label>' +
       '<select id="cafh-msg-channel" style="width:100%;padding:8px;margin-top:4px;border:1.5px solid #D1DAEA;border-radius:6px">' +
@@ -135,10 +139,23 @@
     };
     try {
       var r = await api('/api/ops/messaging/send', { method: 'POST', body: JSON.stringify(body) });
-      toast('Sent to ' + (r.sent_ok || 0) + ' of ' + (r.total || 0) + ' clients', r.sent_ok ? 'ok' : 'err');
+      var reason = '';
+      if (r.results && r.results.length) {
+        var parts = [];
+        r.results.forEach(function (row) {
+          if (row.email && !row.email.ok) parts.push((row.client_name || '') + ' email: ' + (row.email.detail || 'failed'));
+          if (row.whatsapp && !row.whatsapp.ok) parts.push((row.client_name || '') + ' WhatsApp: ' + (row.whatsapp.detail || 'failed'));
+        });
+        if (parts.length) reason = ' — ' + parts.slice(0, 2).join('; ');
+      }
+      if (r.sent_ok) {
+        toast('Sent to ' + r.sent_ok + ' of ' + r.total + ' clients', 'ok');
+      } else {
+        toast('Sent to 0 of ' + (r.total || 0) + ' clients' + reason, 'err');
+      }
       closeModal();
     } catch (e) {
-      toast(e.message || 'Send failed — check SMTP / WhatsApp on Render', 'err');
+      toast(e.message || 'Send failed — set SMTP_* on Render', 'err');
     }
   };
 
