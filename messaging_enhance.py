@@ -2,11 +2,17 @@
 CA FirmHub — Client messaging (additive).
 1) Save firm admin email & phone
 2) Select clients → send to contact_email / contact_phone
+
+Email delivery (in order):
+  1) RESEND_API_KEY  → HTTPS (works on Render free tier)
+  2) SMTP with SSL on 465 or STARTTLS on 587
 """
 import os
 import json
 import smtplib
+import ssl
 import urllib.request
+import urllib.error
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import request, jsonify, g
@@ -53,16 +59,58 @@ def register_messaging_enhance(app, helpers):
             row.setdefault("notify_from_name", "")
         return row or {}
 
-    def _send_email(to_addr, subject, body, reply_to=None, from_name=None):
-        host = os.environ.get("SMTP_HOST", "")
-        port = int(os.environ.get("SMTP_PORT", "587"))
-        user = os.environ.get("SMTP_USER", "")
-        password = os.environ.get("SMTP_PASS", "")
-        from_addr = os.environ.get("SMTP_FROM") or user
+    def _email_ready():
+        if os.environ.get("RESEND_API_KEY"):
+            return True
+        return bool(os.environ.get("SMTP_HOST") and (os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER")))
+
+    def _send_via_resend(to_addr, subject, body, from_name=None, reply_to=None):
+        key = os.environ.get("RESEND_API_KEY", "").strip()
+        if not key:
+            return False, "RESEND_API_KEY not set"
+        from_addr = os.environ.get("SMTP_FROM") or os.environ.get("RESEND_FROM") or "onboarding@resend.dev"
+        if from_name:
+            from_header = f"{from_name} <{from_addr}>"
+        else:
+            from_header = from_addr
+        payload = {
+            "from": from_header,
+            "to": [to_addr],
+            "subject": subject,
+            "text": body,
+        }
+        if reply_to:
+            payload["reply_to"] = reply_to
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return True, resp.read().decode()[:200]
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode()[:300] if e.fp else str(e)
+            return False, f"Resend HTTP {e.code}: {err_body}"
+        except Exception as e:
+            return False, str(e)
+
+    def _send_via_smtp(to_addr, subject, body, reply_to=None, from_name=None):
+        host = (os.environ.get("SMTP_HOST") or "").strip()
+        port = int(os.environ.get("SMTP_PORT") or "587")
+        user = (os.environ.get("SMTP_USER") or "").strip()
+        password = (os.environ.get("SMTP_PASS") or "").strip()
+        from_addr = (os.environ.get("SMTP_FROM") or user).strip()
         if not host or not from_addr:
-            return False, "Email server not configured (set SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM on Render)"
+            return False, "Email server not configured (set SMTP_* or RESEND_API_KEY on Render)"
         if not to_addr or "@" not in str(to_addr):
             return False, "Invalid recipient email"
+
         msg = MIMEMultipart()
         msg["From"] = f"{from_name} <{from_addr}>" if from_name else from_addr
         msg["To"] = to_addr
@@ -70,17 +118,39 @@ def register_messaging_enhance(app, helpers):
         if reply_to:
             msg["Reply-To"] = reply_to
         msg.attach(MIMEText(body, "plain", "utf-8"))
+
         try:
-            server = smtplib.SMTP(host, port, timeout=30)
-            if os.environ.get("SMTP_TLS", "1") != "0":
-                server.starttls()
+            ctx = ssl.create_default_context()
+            # Port 465 = implicit SSL; 587 = STARTTLS
+            if port == 465:
+                server = smtplib.SMTP_SSL(host, port, timeout=30, context=ctx)
+            else:
+                server = smtplib.SMTP(host, port, timeout=30)
+                if os.environ.get("SMTP_TLS", "1") != "0":
+                    server.starttls(context=ctx)
             if user and password:
                 server.login(user, password)
             server.sendmail(from_addr, [to_addr], msg.as_string())
             server.quit()
             return True, "sent"
+        except OSError as e:
+            # Errno 101 = Network unreachable — common on Render free tier for SMTP ports
+            err = str(e)
+            if "101" in err or "unreachable" in err.lower():
+                return False, (
+                    "Network unreachable to SMTP host. Render free tier often blocks port 587/465. "
+                    "Fix: add RESEND_API_KEY (free at resend.com) — uses HTTPS and works on Render. "
+                    "Or try SMTP_PORT=465."
+                )
+            return False, err
         except Exception as e:
             return False, str(e)
+
+    def _send_email(to_addr, subject, body, reply_to=None, from_name=None):
+        # Prefer Resend (HTTPS) — reliable on Render free
+        if os.environ.get("RESEND_API_KEY"):
+            return _send_via_resend(to_addr, subject, body, from_name=from_name, reply_to=reply_to)
+        return _send_via_smtp(to_addr, subject, body, reply_to=reply_to, from_name=from_name)
 
     def _send_whatsapp(phone, message):
         url = os.environ.get("WHATSAPP_WEBHOOK_URL", "")
@@ -115,7 +185,8 @@ def register_messaging_enhance(app, helpers):
                 "notify_phone": s.get("notify_phone") or "",
                 "notify_from_name": s.get("notify_from_name") or s.get("name") or "",
                 "firm_name": s.get("name") or "",
-                "smtp_ready": bool(os.environ.get("SMTP_HOST") and (os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER"))),
+                "smtp_ready": _email_ready(),
+                "resend_ready": bool(os.environ.get("RESEND_API_KEY")),
                 "whatsapp_ready": bool(os.environ.get("WHATSAPP_WEBHOOK_URL")),
             })
         except Exception as e:
