@@ -1,4 +1,4 @@
-/* CA FirmHub — notify helpers (email digest / WhatsApp / better downloads) */
+/* CA FirmHub — portal file download helpers only (email/WhatsApp removed) */
 (function () {
   if (window.__cafhNotifyUI) return;
   window.__cafhNotifyUI = true;
@@ -31,50 +31,4 @@
       }
     } catch (e) { toast(e.message, 'err'); }
   };
-
-  window.cafhSendEmailDigest = async function () {
-    var to = prompt('Send digest to email (comma-separated):', '');
-    if (to === null) return;
-    try {
-      var body = {};
-      if (to.trim()) body.to = to.trim();
-      var r = await api('/api/ops/notify/email-digest', { method: 'POST', body: JSON.stringify(body) });
-      toast('Email sent to ' + (r.to || 'recipient'), 'ok');
-    } catch (e) {
-      toast(e.message || 'Email failed — set SMTP_HOST on Render', 'err');
-    }
-  };
-
-  window.cafhSendWhatsAppDigest = async function () {
-    var phone = prompt('WhatsApp number (with country code, e.g. 9198xxxxxxxx):', '');
-    if (phone === null) return;
-    try {
-      var body = {};
-      if (phone.trim()) body.phone = phone.trim();
-      await api('/api/ops/notify/whatsapp', { method: 'POST', body: JSON.stringify(body) });
-      toast('WhatsApp webhook called', 'ok');
-    } catch (e) {
-      toast(e.message || 'WhatsApp failed — set WHATSAPP_WEBHOOK_URL on Render', 'err');
-    }
-  };
-
-  function injectNotifyBtns() {
-    var pa = document.getElementById('pa');
-    var pt = document.getElementById('pt');
-    if (!pa || !pt) return;
-    if (!(pt.textContent || '').match(/Dashboard/i)) return;
-    if (document.getElementById('cafh-notify-btns')) return;
-    var s = document.createElement('span');
-    s.id = 'cafh-notify-btns';
-    s.style.marginLeft = '6px';
-    s.innerHTML =
-      '<button class="btn btn-o btn-xs" onclick="cafhSendEmailDigest()">📧 Email digest</button> ' +
-      '<button class="btn btn-o btn-xs" onclick="cafhSendWhatsAppDigest()">💬 WhatsApp</button>';
-    pa.appendChild(s);
-  }
-
-  var obs = new MutationObserver(injectNotifyBtns);
-  obs.observe(document.documentElement, { childList: true, subtree: true });
-  if (document.readyState !== 'loading') injectNotifyBtns();
-  else document.addEventListener('DOMContentLoaded', injectNotifyBtns);
 })();
