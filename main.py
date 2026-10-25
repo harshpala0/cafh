@@ -204,3 +204,17 @@ try:
     })
 except Exception as _lib_err:
     print("[CA FirmHub] Library enhance not loaded:", _lib_err)
+
+
+# Inject SuperAdmin firm-library UI
+try:
+    def _sa_with_library():
+        path = Path(__file__).resolve().parent / "static" / "superadmin.html"
+        html = path.read_text(encoding="utf-8")
+        tag = '<script src="/static/superadmin-library.js" defer></script>\n'
+        if "superadmin-library.js" not in html and "</body>" in html:
+            html = html.replace("</body>", tag + "</body>", 1)
+        return _Response(html, mimetype="text/html")
+    app.view_functions["superadmin_page"] = _sa_with_library
+except Exception as _sa_lib_err:
+    print("[CA FirmHub] SuperAdmin library UI inject:", _sa_lib_err)
