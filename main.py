@@ -1,7 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Portal, Compliance, Ops, Notify helpers, Cron, Data Verify.
-Email/WhatsApp messaging removed; Data Verify added.
+Injects mobile/PWA, Portal, Compliance, Ops, Notify helpers, Cron, Data Verify, Library.
 """
 import urllib.request
 from pathlib import Path
@@ -77,6 +76,7 @@ _MOBILE_BODY = (
     '<script src="/static/ops-ui.js" defer></script>\n'
     '<script src="/static/notify-ui.js" defer></script>\n'
     '<script src="/static/verify-ui.js" defer></script>\n'
+    '<script src="/static/library-ui.js" defer></script>\n'
 )
 
 
@@ -96,7 +96,7 @@ def _serve_index_with_mobile():
         if idx != -1:
             html = html[:idx] + _MOBILE_BODY + html[idx:]
     else:
-        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js", "notify-ui.js", "verify-ui.js"):
+        for script in ("staff-ui.js", "ops-ui.js", "compliance-ui.js", "notify-ui.js", "verify-ui.js", "library-ui.js"):
             tag = f'<script src="/static/{script}" defer></script>'
             if script not in html and "</body>" in html:
                 idx = html.rfind("</body>")
@@ -191,3 +191,16 @@ try:
     })
 except Exception as _verify_err:
     print("[CA FirmHub] Verify enhance not loaded:", _verify_err)
+
+
+try:
+    from library_enhance import register_library_enhance
+    register_library_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _lib_err:
+    print("[CA FirmHub] Library enhance not loaded:", _lib_err)
