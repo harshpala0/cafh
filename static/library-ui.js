@@ -8,7 +8,7 @@
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      return ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": '&#39;' })[c];
     });
   }
 
@@ -86,6 +86,7 @@
     }
 
     var cats = data.categories || [];
+    var firmCats = data.firm_categories || [];
     var searchId = 'cafh-lib-q';
 
     var html = '';
@@ -102,6 +103,7 @@
 
     html += '<div id="cafh-lib-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">';
     html += '<button type="button" class="btn btn-o btn-xs cafh-lib-chip on" data-cat="all">All</button>';
+    if (firmCats.length) html += '<button type="button" class="btn btn-o btn-xs cafh-lib-chip" data-cat="firm">📎 Firm materials</button>';
     cats.forEach(function (c) {
       html += '<button type="button" class="btn btn-o btn-xs cafh-lib-chip" data-cat="' + esc(c.id) + '">' +
         esc((c.icon || '') + ' ' + c.title) + '</button>';
@@ -109,6 +111,26 @@
     html += '</div>';
 
     html += '<div id="cafh-lib-body">';
+    if (firmCats.length) {
+      html += '<div style="margin-bottom:10px;padding:10px 12px;background:#EBF4FF;border-radius:8px;font-size:12px;color:#1A365D">' +
+        '<strong>Your firm materials</strong> (' + (data.firm_item_count || 0) + ') — only visible to this firm</div>';
+      firmCats.forEach(function (c) {
+        html += '<div class="card cafh-lib-cat" data-cat="firm" style="margin-bottom:14px;border:1px solid #93C5FD">';
+        html += '<div class="card-b" style="padding:16px 18px">';
+        html += '<div style="font-weight:700;color:#003366;font-size:15px;margin-bottom:6px">📎 ' + esc(c.title) +
+          ' <span style="font-size:11px;background:#BEE3F8;padding:2px 6px;border-radius:4px">Firm only</span></div>';
+        html += '<div style="display:grid;gap:8px">';
+        (c.items || []).forEach(function (it) {
+          html += '<a class="cafh-lib-item" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer" ';
+          html += 'data-text="' + esc((it.title + ' firm').toLowerCase()) + '" ';
+          html += 'style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #E4EAF2;border-radius:8px;text-decoration:none;color:inherit;background:#FAFBFC">';
+          html += '<div><div style="font-size:13px;font-weight:600;color:#1A365D">' + esc(it.title) + '</div>';
+          html += '<div style="font-size:11px;color:#718096">' + esc(it.source || '') + '</div></div>';
+          html += '<span style="font-size:12px;color:#004080;font-weight:600">Open ↗</span></a>';
+        });
+        html += '</div></div></div>';
+      });
+    }
     cats.forEach(function (c) {
       html += '<div class="card cafh-lib-cat" data-cat="' + esc(c.id) + '" style="margin-bottom:14px">';
       html += '<div class="card-b" style="padding:16px 18px">';
@@ -119,7 +141,7 @@
       html += '<div style="margin-top:12px;display:grid;gap:8px">';
       (c.items || []).forEach(function (it) {
         html += '<a class="cafh-lib-item" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer" ';
-        html += 'data-text="' + esc((it.title + ' ' + (it.source || '') + ' ' + (it.type || '') + ' ' + c.title).toLowerCase()) + '" ';
+        html += 'data-text="' + esc((it.title + ' ' + (it.source || '') + ' ' + c.title).toLowerCase()) + '" ';
         html += 'style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;';
         html += 'border:1px solid #E4EAF2;border-radius:8px;text-decoration:none;color:inherit;background:#FAFBFC">';
         html += '<div><div style="font-size:13px;font-weight:600;color:#1A365D">' + esc(it.title) + '</div>';
