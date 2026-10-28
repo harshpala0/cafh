@@ -67,32 +67,38 @@
       '<p style="font-size:12px;color:#4A5568;margin-bottom:10px">Select services for this client, then generate calendar dates for the current FY.</p>' +
       checks +
       '<div class="fg" style="margin-top:12px"><label style="font-size:11px;font-weight:600">Financial year</label>' +
-      '<input id="cafh-pack-fy" value="' + fy() + '" placeholder="2025-26" style="width:100%;padding:8px;margin-top:4px;border:1.5px solid #D1DAEA;border-radius:6px"></div>',
+      '<input id="cafh-pack-fy" value="' + fy() + '" placeholder="2026-27" style="width:100%;padding:8px;margin-top:4px;border:1.5px solid #D1DAEA;border-radius:6px"></div>',
       '<button class="btn btn-o" onclick="(window.cM?cM():document.getElementById(\'cafh-modal\')?.remove())">Cancel</button>' +
-      '<button class="btn btn-p" onclick="cafhSavePacks(' + clientId + ')">Save &amp; generate</button>'
+      '<button class="btn btn-p" onclick="cafhSavePacks(' + clientId + ')">Save & generate</button>'
     );
   };
 
   window.cafhSavePacks = async function (clientId) {
     var boxes = document.querySelectorAll('.cafh-pack:checked');
     var list = Array.prototype.map.call(boxes, function (b) { return b.value; });
-    var year = (document.getElementById('cafh-pack-fy') || {}).value || fy();
+    var year = ((document.getElementById('cafh-pack-fy') || {}).value || fy() || '').trim();
+    if (!year) {
+      toast('Enter financial year e.g. 2026-27', 'err');
+      return;
+    }
     try {
       await api('/api/compliance-calendar/client-packs/' + clientId, {
         method: 'PUT',
         body: JSON.stringify({ packs: list })
       });
-      if (list.length && year) {
+      if (list.length) {
         var r = await api('/api/compliance-calendar/generate-for-client', {
           method: 'POST',
-          body: JSON.stringify({ client_id: clientId, financial_year: year })
+          body: JSON.stringify({ client_id: clientId, financial_year: year, packs: list })
         });
-        toast(r.message || 'Packs saved', 'ok');
+        toast(r.message || ('Generated ' + (r.added || 0) + ' calendar items'), 'ok');
       } else {
-        toast('Packs saved (no dates generated)', 'ok');
+        toast('Packs cleared (no services selected)', 'ok');
       }
       closeModal();
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) {
+      toast(e.message || 'Request failed', 'err');
+    }
   };
 
   window.cafhRequestDocs = function (clientId) {
@@ -118,63 +124,45 @@
       client_id: clientId,
       title: title,
       description: ((document.getElementById('cafh-dr-desc') || {}).value || '').trim(),
-      due_date: (document.getElementById('cafh-dr-due') || {}).value || null
+      due_date: ((document.getElementById('cafh-dr-due') || {}).value || '') || null
     };
     try {
-      await api('/api/portal/admin/doc-requests', { method: 'POST', body: JSON.stringify(body) });
-      toast('Document request sent to client portal', 'ok');
+      await api('/api/portal/doc-requests', { method: 'POST', body: JSON.stringify(body) });
+      toast('Document request sent', 'ok');
       closeModal();
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) {
+      toast(e.message || 'Request failed', 'err');
+    }
   };
 
-  function injectClientActions() {
-    var pt = document.getElementById('pt');
-    if (!pt || !(pt.textContent || '').match(/Client/i)) return;
-    var rows = document.querySelectorAll('#pb table.dt tbody tr');
-    if (!rows.length) return;
-    rows.forEach(function (tr) {
-      if (tr.dataset.cafhStaff) return;
-      var actions = tr.querySelector('td:last-child');
-      if (!actions) return;
-      var editBtn = actions.querySelector('button[onclick*="cfm("]');
-      if (!editBtn) return;
-      var m = (editBtn.getAttribute('onclick') || '').match(/cfm\((\d+)\)/);
-      if (!m) return;
-      var id = m[1];
-      tr.dataset.cafhStaff = '1';
-      var span = document.createElement('span');
-      span.innerHTML =
-        ' <button class="btn btn-xs btn-o" title="Compliance packs" onclick="cafhOpenPacks(' + id + ')">📦 Packs</button>' +
-        ' <button class="btn btn-xs btn-o" title="Request documents via portal" onclick="cafhRequestDocs(' + id + ')">📎 Request docs</button>';
-      actions.appendChild(span);
-    });
+  function injectPackButtons() {
+    try {
+      if (typeof U !== 'undefined' && U && U.role === 'Client') return;
+      document.querySelectorAll('tr[data-id], .client-row, table tbody tr').forEach(function (row) {
+        if (row.querySelector('[data-cafh-packs]')) return;
+        var id = row.getAttribute('data-id');
+        if (!id) {
+          var btn = row.querySelector('[onclick*="editClient"], [onclick*="openClient"]');
+          if (btn) {
+            var m = (btn.getAttribute('onclick') || '').match(/\((\d+)/);
+            if (m) id = m[1];
+          }
+        }
+        if (!id) return;
+        var actions = row.querySelector('td:last-child') || row;
+        if (!actions) return;
+        var span = document.createElement('span');
+        span.setAttribute('data-cafh-packs', '1');
+        span.innerHTML =
+          ' <button class="btn btn-xs btn-o" title="Compliance packs" onclick="cafhOpenPacks(' + id + ')">📦 Packs</button>' +
+          ' <button class="btn btn-xs btn-o" title="Request documents" onclick="cafhRequestDocs(' + id + ')">📄 Request docs</button>';
+        actions.appendChild(span);
+      });
+    } catch (e) {}
   }
 
-  function injectPortalLink() {
-    if (document.getElementById('cafh-portal-link')) return;
-    var ph = document.querySelector('.ph-right') || document.querySelector('.ph-left');
-    if (!ph) return;
-    var a = document.createElement('a');
-    a.id = 'cafh-portal-link';
-    a.href = '/portal';
-    a.target = '_blank';
-    a.textContent = 'Client Portal';
-    a.style.cssText = 'font-size:12px;font-weight:600;color:#003366;margin-right:10px;text-decoration:none;padding:4px 8px;border:1px solid #D1DAEA;border-radius:6px;background:#fff';
-    ph.insertBefore(a, ph.firstChild);
-  }
-
-  var obs = new MutationObserver(function () {
-    injectClientActions();
-    injectPortalLink();
-  });
+  var obs = new MutationObserver(function () { injectPackButtons(); });
   obs.observe(document.documentElement, { childList: true, subtree: true });
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      injectClientActions();
-      injectPortalLink();
-    });
-  } else {
-    injectClientActions();
-    injectPortalLink();
-  }
+  if (document.readyState !== 'loading') injectPackButtons();
+  else document.addEventListener('DOMContentLoaded', injectPackButtons);
 })();
