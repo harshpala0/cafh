@@ -1,4 +1,6 @@
-/* CA FirmHub — staff helpers: client packs + portal doc requests (additive) */
+/* CA FirmHub — staff helpers: client packs + portal doc requests (additive)
+   Designed & Built by Harsh Pala
+*/
 (function () {
   if (window.__cafhStaffUI) return;
   window.__cafhStaffUI = true;
@@ -124,45 +126,72 @@
       client_id: clientId,
       title: title,
       description: ((document.getElementById('cafh-dr-desc') || {}).value || '').trim(),
-      due_date: ((document.getElementById('cafh-dr-due') || {}).value || '') || null
+      due_date: (document.getElementById('cafh-dr-due') || {}).value || null
     };
     try {
-      await api('/api/portal/doc-requests', { method: 'POST', body: JSON.stringify(body) });
-      toast('Document request sent', 'ok');
+      await api('/api/portal/admin/doc-requests', { method: 'POST', body: JSON.stringify(body) });
+      toast('Document request sent to client portal', 'ok');
       closeModal();
     } catch (e) {
       toast(e.message || 'Request failed', 'err');
     }
   };
 
-  function injectPackButtons() {
+  /* Inject into Clients table rows that use onclick="cfm(id)" — must not break Edit/Delete */
+  function injectClientActions() {
     try {
       if (typeof U !== 'undefined' && U && U.role === 'Client') return;
-      document.querySelectorAll('tr[data-id], .client-row, table tbody tr').forEach(function (row) {
-        if (row.querySelector('[data-cafh-packs]')) return;
-        var id = row.getAttribute('data-id');
-        if (!id) {
-          var btn = row.querySelector('[onclick*="editClient"], [onclick*="openClient"]');
-          if (btn) {
-            var m = (btn.getAttribute('onclick') || '').match(/\((\d+)/);
-            if (m) id = m[1];
-          }
-        }
-        if (!id) return;
-        var actions = row.querySelector('td:last-child') || row;
+      var pt = document.getElementById('pt');
+      if (!pt || !(pt.textContent || '').match(/Client/i)) return;
+      var rows = document.querySelectorAll('#pb table.dt tbody tr');
+      if (!rows.length) return;
+      rows.forEach(function (tr) {
+        if (tr.dataset.cafhStaff) return;
+        var actions = tr.querySelector('td:last-child');
         if (!actions) return;
+        var editBtn = actions.querySelector('button[onclick*="cfm("]');
+        if (!editBtn) return;
+        var m = (editBtn.getAttribute('onclick') || '').match(/cfm\((\d+)\)/);
+        if (!m) return;
+        var id = m[1];
+        tr.dataset.cafhStaff = '1';
         var span = document.createElement('span');
         span.setAttribute('data-cafh-packs', '1');
         span.innerHTML =
           ' <button class="btn btn-xs btn-o" title="Compliance packs" onclick="cafhOpenPacks(' + id + ')">📦 Packs</button>' +
-          ' <button class="btn btn-xs btn-o" title="Request documents" onclick="cafhRequestDocs(' + id + ')">📄 Request docs</button>';
+          ' <button class="btn btn-xs btn-o" title="Request documents via portal" onclick="cafhRequestDocs(' + id + ')">📎 Request docs</button>';
         actions.appendChild(span);
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[staff-ui] injectClientActions', e);
+    }
   }
 
-  var obs = new MutationObserver(function () { injectPackButtons(); });
+  function injectPortalLink() {
+    if (document.getElementById('cafh-portal-link')) return;
+    var ph = document.querySelector('.ph-right') || document.querySelector('.ph-left');
+    if (!ph) return;
+    var a = document.createElement('a');
+    a.id = 'cafh-portal-link';
+    a.href = '/portal';
+    a.target = '_blank';
+    a.textContent = 'Client Portal';
+    a.style.cssText = 'font-size:12px;font-weight:600;color:#003366;margin-right:10px;text-decoration:none;padding:4px 8px;border:1px solid #D1DAEA;border-radius:6px;background:#fff';
+    ph.insertBefore(a, ph.firstChild);
+  }
+
+  var obs = new MutationObserver(function () {
+    injectClientActions();
+    injectPortalLink();
+  });
   obs.observe(document.documentElement, { childList: true, subtree: true });
-  if (document.readyState !== 'loading') injectPackButtons();
-  else document.addEventListener('DOMContentLoaded', injectPackButtons);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      injectClientActions();
+      injectPortalLink();
+    });
+  } else {
+    injectClientActions();
+    injectPortalLink();
+  }
 })();
