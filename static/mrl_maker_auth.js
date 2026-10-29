@@ -1,72 +1,53 @@
-/* CA FirmHub — MRL Maker auth + TaxGuru letter fix | Harsh Pala */
+/* CA FirmHub — MRL Maker auth + TaxGuru letter | Designed & Built by Harsh Pala */
 (function () {
-  // Override token: main app stores JWT as localStorage 'at'
-  window.token = function () {
+  function jwt() {
     return localStorage.getItem('at')
       || sessionStorage.getItem('at')
       || localStorage.getItem('token')
       || sessionStorage.getItem('token')
       || '';
+  }
+
+  // Intercept fetch so /api/clients always gets the real CA FirmHub JWT
+  var _fetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    init = init || {};
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.indexOf('/api/clients') !== -1) {
+      var headers = new Headers(init.headers || (input && input.headers) || {});
+      if (!headers.get('Authorization') || headers.get('Authorization') === 'Bearer ') {
+        var t = jwt();
+        if (t) headers.set('Authorization', 'Bearer ' + t);
+      }
+      if (!headers.get('Accept')) headers.set('Accept', 'application/json');
+      init = Object.assign({}, init, { headers: headers });
+    }
+    return _fetch(input, init);
   };
 
-  // Re-bind loadClients if already defined
-  var _load = window.loadClients;
-  window.loadClients = async function () {
-    var sel = document.getElementById('client-sel');
-    if (!sel) return;
-    var tok = window.token();
-    if (!tok) {
-      sel.innerHTML = '<option value="">Not logged in — open main app, log in, then refresh this page</option>';
-      if (typeof toast === 'function') toast('Log in on CA FirmHub first');
-      return;
-    }
-    sel.innerHTML = '<option value="">Loading clients…</option>';
-    try {
-      var r = await fetch('/api/clients/', {
-        headers: { Authorization: 'Bearer ' + tok, Accept: 'application/json' }
-      });
-      if (r.status === 401 || r.status === 403) {
-        throw new Error('Session expired. Log in again on main app, then refresh.');
-      }
-      if (!r.ok) throw new Error('Could not load clients (' + r.status + ')');
-      var list = await r.json();
-      window.__clients = Array.isArray(list) ? list : (list.clients || list.data || []);
-      if (!window.__clients.length) {
-        sel.innerHTML = '<option value="">No clients in register</option>';
-        return;
-      }
-      sel.innerHTML = '<option value="">— Select client —</option>' +
-        window.__clients.map(function (c) {
-          return '<option value="' + c.id + '">' + (c.name || '') +
-            (c.pan ? ' (' + c.pan + ')' : '') + '</option>';
-        }).join('');
-    } catch (e) {
-      sel.innerHTML = '<option value="">' + (e.message || 'Failed') + '</option>';
-      if (typeof toast === 'function') toast(e.message || 'Could not load clients');
-    }
-  };
+  // TaxGuru format letter builder override (uses global STATE from app IIFE if exposed)
+  function field(a, id, def) {
+    if (a && a.fields && a.fields[id]) return a.fields[id];
+    return def || '';
+  }
+  function lineStatus(answers, id, defaultText) {
+    var a = answers[id];
+    if (!a || !a.status || a.status === 'yes') return defaultText;
+    if (a.status === 'na') return defaultText + ' [N/A for this engagement]';
+    if (a.notes) return defaultText + ' Exception: ' + a.notes;
+    return defaultText + ' [Exception — see working papers]';
+  }
 
-  // TaxGuru format letter builder override
   window.buildTaxLetter = function () {
-    var c = (typeof STATE !== 'undefined' && STATE.client) || {};
-    var m = (typeof STATE !== 'undefined' && STATE.meta) || {};
-    var A = (typeof STATE !== 'undefined' && STATE.answers) || {};
+    var S = window.__MRL_STATE || window.STATE || {};
+    var c = S.client || {};
+    var m = S.meta || {};
+    var A = S.answers || {};
     var ye = m.yearEnd || '________';
     var ay = m.assessmentYear || '________';
     var cn = c.name || '________';
     var L = [];
-    function field(a, id, def) {
-      if (a && a.fields && a.fields[id]) return a.fields[id];
-      return def || '';
-    }
-    function lineStatus(id, defaultText) {
-      var a = A[id];
-      if (!a || !a.status || a.status === 'yes') return defaultText;
-      if (a.status === 'na') return defaultText + ' [N/A for this engagement]';
-      if (a.notes) return defaultText + ' Exception: ' + a.notes;
-      return defaultText + ' [Exception — see working papers]';
-    }
-    function t(n, text) { L.push(lineStatus('T' + n, text)); }
+    function t(n, text) { L.push(lineStatus(A, 'T' + n, text)); }
 
     L.push('[ON THE LETTER HEAD OF AUDITEE]');
     L.push('');
@@ -83,7 +64,6 @@
     L.push('');
     L.push('Please find enclosed a copy of Form 3CD along with all relevant details for the purpose of conducting the Tax Audit of ' + cn + ', for the year ended ' + ye + '. In this connection, we further confirm that:');
     L.push('');
-
     t('1', '1. The address that we have reported in Clause 2 of the Form 3CD is same as we have informed to the Income Tax Department; there is no change in the same' + (field(A.T1, 'addr', c.address || '') ? ' (' + field(A.T1, 'addr', c.address) + ')' : '') + '.');
     t('2', '2. That the registration or identification number, if any, under indirect tax laws including excise duty, goods & service tax, sales tax, customs duty, etc. as informed to you and reported in Clause 4 of Form 3CD are correct and there is no other number other than what is reported in said clause' + (field(A.T2, 'regs', c.gstin || '') ? ' [' + field(A.T2, 'regs', c.gstin) + ']' : '') + '.');
     t('3', '3. We certify, there has been no change in the partners or members or in their profit sharing ratio since the last date of the preceding year during the year under report as stated in clause 9(b) of Form 3CD.');
@@ -99,7 +79,7 @@
     t('13', '13. We follow a policy of capitalizing an asset only after the asset has been purchased and has been put to use. The date on which the asset is put to use is as certified by us in Clause 18 of Form 3CD.');
     t('14', '14. We certify that particulars of depreciation allowable as per the Income-tax Act, 1961 in respect of each asset or block of assets, as the case may be, are correct.');
     t('15', '15. We certify that there is no sum paid to an employee as bonus or commission for service rendered, where such sum was otherwise payable to him as profit or dividend as stated in clause 20 of Form 3CD.');
-    t('16', '16. The employee\'s and employer\'s share contributed towards provident fund, pension fund and ESI, date of deposit and amount of deposit is correctly stated in clause 20(b) of Form 3CD.');
+    t('16', "16. The employee's and employer's share contributed towards provident fund, pension fund and ESI, date of deposit and amount of deposit is correctly stated in clause 20(b) of Form 3CD.");
     t('17', '17. No Capital Expenses have been debited to any Revenue Accounts as stated in clause 21(a) of Form 3CD.');
     t('18', '18. All the expenses incurred during the Year by us are for the purpose of business only.');
     t('19', '19. No personal expenses, except those under contractual obligations or by generally accepted business practice, have been charged to the profit & loss account.');
@@ -129,7 +109,6 @@
     t('43', '43. The basis of calculation of ratios as specified in clause 40 of Form 3CD is correct.');
     t('44', '44. That there is no demand raised or refund issued during the previous year under any tax laws other than Income Tax Act, 1961 and Wealth tax Act, 1957 as required in Clause 41.');
     t('45', '45. We also certify information furnished in Clause 1 to 44 & Annexures of Form 3CD are true and correct.');
-
     L.push('');
     L.push('By order of the Board / For ' + cn);
     L.push('');
@@ -146,19 +125,44 @@
     return L.join('\n');
   };
 
-  // Re-hook after main app loads
-  function apply() {
-    if (typeof STATE === 'undefined') return;
-    // token inside IIFE is local — patch via replacing loadClients used from setup
-    if (typeof loadClients === 'function') {
-      try { loadClients = window.loadClients; } catch (e) {}
+  // Retry client dropdown after app paints setup (uses fixed fetch)
+  function retryClients() {
+    var sel = document.getElementById('client-sel');
+    if (!sel) return;
+    var tok = jwt();
+    if (!tok) {
+      sel.innerHTML = '<option value="">Not logged in — open main CA FirmHub, log in, then refresh this page</option>';
+      return;
     }
+    sel.innerHTML = '<option value="">Loading clients…</option>';
+    fetch('/api/clients/', { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status === 401 ? 'Session expired — log in again on main app' : 'HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (list) {
+        window.__clients = Array.isArray(list) ? list : (list.clients || list.data || []);
+        if (!window.__clients.length) {
+          sel.innerHTML = '<option value="">No clients in register</option>';
+          return;
+        }
+        sel.innerHTML = '<option value="">— Select client —</option>' +
+          window.__clients.map(function (c) {
+            return '<option value="' + c.id + '">' + (c.name || '') +
+              (c.pan ? ' (' + c.pan + ')' : '') + '</option>';
+          }).join('');
+      })
+      .catch(function (e) {
+        sel.innerHTML = '<option value="">' + (e.message || 'Failed to load') + '</option>';
+      });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(apply, 100); });
-  else setTimeout(apply, 100);
-  setTimeout(function () {
-    if (typeof STATE !== 'undefined' && document.getElementById('client-sel')) {
-      window.loadClients();
+
+  setTimeout(retryClients, 300);
+  setTimeout(retryClients, 1200);
+  var obs = new MutationObserver(function () {
+    if (document.getElementById('client-sel') && document.getElementById('client-sel').options.length <= 1) {
+      retryClients();
     }
-  }, 400);
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
 })();
