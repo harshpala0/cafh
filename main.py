@@ -1,6 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Portal, Compliance, Ops, Notify helpers, Cron, Data Verify, Library, Import Packs.
+Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker.
 """
 import urllib.request
 from pathlib import Path
@@ -77,6 +77,7 @@ _MOBILE_BODY = (
     '<script src="/static/notify-ui.js" defer></script>\n'
     '<script src="/static/verify-ui.js" defer></script>\n'
     '<script src="/static/library-ui.js" defer></script>\n'
+    '<script src="/static/mrl-ui.js" defer></script>\n'
     '<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js").catch(function(){}); }</script>\n'
 )
 
@@ -91,6 +92,8 @@ def _serve_index_with_mobile():
             idx = html.rfind("</body>")
             if idx != -1:
                 html = html[:idx] + _MOBILE_BODY + html[idx:]
+        if "mrl-ui.js" not in html and "</body>" in html:
+            html = html.replace("</body>", '<script src="/static/mrl-ui.js" defer></script>\n</body>', 1)
         return _Response(html, mimetype="text/html")
     except Exception as e:
         return _Response(f"Error loading app: {e}", status=500, mimetype="text/plain")
