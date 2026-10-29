@@ -1,4 +1,4 @@
-/* CA FirmHub — MRL Maker auth + TaxGuru letter | Designed & Built by Harsh Pala */
+/* CA FirmHub — MRL Maker auth + Tax Audit letter | Designed & Built by Harsh Pala */
 (function () {
   function jwt() {
     return localStorage.getItem('at')
@@ -32,10 +32,8 @@
     });
   }
 
-  function taxGuruLetter() {
-    var cn = val('f-client') || ((window.__clients || []).find(function () { return false; }) && '') ||
-      (document.getElementById('f-client') && document.getElementById('f-client').value) || '________';
-    // Prefer STATE if exposed
+  function taxAuditLetter() {
+    var cn = val('f-client') || '________';
     var S = window.__MRL_STATE || window.STATE || {};
     if (S.client && S.client.name) cn = S.client.name;
     var m = S.meta || {};
@@ -134,27 +132,25 @@
     L.push('Date:- ' + letterDate);
     L.push('');
     L.push('— CA FirmHub MRL Maker · Designed & Built by Harsh Pala —');
-    L.push('(Format adapted from TaxGuru draft MRL on Tax Audit)');
     return L.join('\n');
   }
 
-  window.buildTaxLetter = taxGuruLetter;
+  window.buildTaxLetter = taxAuditLetter;
 
   function installBuildLetter() {
     var orig = window.buildLetter;
-    if (!orig || orig.__taxguru) return;
+    if (!orig || orig.__cafhMrl) return;
     function wrapped() {
       var mode = (window.__MRL_STATE && window.__MRL_STATE.mode) || (window.STATE && window.STATE.mode) || 'tax';
-      // Detect tax from UI if needed
       var taxBtn = document.querySelector('.status-row button.on-yes');
       if (taxBtn && /Tax Audit/i.test(taxBtn.textContent)) mode = 'tax';
       if (mode === 'tax') {
-        var text = taxGuruLetter();
+        var text = taxAuditLetter();
         window.__letterText = text;
         var content = document.getElementById('content');
         if (content) {
           content.innerHTML = '<div class="card"><h3>Management Representation Letter</h3>' +
-            '<p class="muted">TaxGuru draft format (45 points). Print for Times New Roman PDF.</p>' +
+            '<p class="muted">Tax Audit MRL (45 points). Print for Times New Roman PDF.</p>' +
             '<div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">' +
             '<button class="btn btn-g" type="button" onclick="printLetter()">Print / Save as PDF</button>' +
             '<button class="btn" type="button" onclick="downloadHtml()">Download HTML</button>' +
@@ -167,7 +163,7 @@
       }
       return orig.apply(this, arguments);
     }
-    wrapped.__taxguru = true;
+    wrapped.__cafhMrl = true;
     window.buildLetter = wrapped;
   }
 
@@ -179,7 +175,6 @@
       sel.innerHTML = '<option value="">Not logged in — open main CA FirmHub, log in, then refresh this page</option>';
       return;
     }
-    // Always force reload so JWT is applied
     sel.innerHTML = '<option value="">Loading clients…</option>';
     fetch('/api/clients/', { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/json' } })
       .then(function (r) {
@@ -209,10 +204,6 @@
   setTimeout(retryClients, 1200);
   var obs = new MutationObserver(function () {
     installBuildLetter();
-    var sel = document.getElementById('client-sel');
-    if (sel && sel.options.length <= 1 && /Loading|Not logged|Failed|Select client|No clients/i.test(sel.options[0] && sel.options[0].text || '')) {
-      // only auto-retry when empty/error
-    }
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
 })();
