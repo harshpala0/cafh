@@ -1,6 +1,6 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker (full letters).
+Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker.
 """
 import urllib.request
 from pathlib import Path
@@ -77,7 +77,6 @@ _MOBILE_BODY = (
     '<script src="/static/notify-ui.js" defer></script>\n'
     '<script src="/static/verify-ui.js" defer></script>\n'
     '<script src="/static/library-ui.js" defer></script>\n'
-    '<script src="/static/mrl-letters.js" defer></script>\n'
     '<script src="/static/mrl-ui.js" defer></script>\n'
     '<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js").catch(function(){}); }</script>\n'
 )
@@ -93,14 +92,7 @@ def _serve_index_with_mobile():
             idx = html.rfind("</body>")
             if idx != -1:
                 html = html[:idx] + _MOBILE_BODY + html[idx:]
-        if "mrl-letters.js" not in html and "</body>" in html:
-            html = html.replace(
-                "</body>",
-                '<script src="/static/mrl-letters.js" defer></script>\n'
-                '<script src="/static/mrl-ui.js" defer></script>\n</body>',
-                1,
-            )
-        elif "mrl-ui.js" not in html and "</body>" in html:
+        if "mrl-ui.js" not in html and "</body>" in html:
             html = html.replace("</body>", '<script src="/static/mrl-ui.js" defer></script>\n</body>', 1)
         return _Response(html, mimetype="text/html")
     except Exception as e:
@@ -238,3 +230,12 @@ try:
     app.view_functions["superadmin_page"] = _sa_with_library
 except Exception as _sa_lib_err:
     print("[CA FirmHub] SuperAdmin library UI inject:", _sa_lib_err)
+
+
+try:
+    from flask import send_from_directory as _sfd_mrl
+    @app.route("/tools/mrl")
+    def mrl_maker_page():
+        return _sfd_mrl("static", "mrl_maker.html")
+except Exception as _mrl_route_err:
+    print("[CA FirmHub] MRL route:", _mrl_route_err)
