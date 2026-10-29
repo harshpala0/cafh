@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MRL Maker — CA FirmHub</title>
 <link rel="stylesheet" href="/static/mrl_maker.css">
+<script>
+/* CA FirmHub stores JWT as "at"; MRL tool also accepts "token" */
+(function () {
+  try {
+    var at = localStorage.getItem('at') || sessionStorage.getItem('at');
+    if (at) {
+      if (!localStorage.getItem('token')) localStorage.setItem('token', at);
+      if (!sessionStorage.getItem('token')) sessionStorage.setItem('token', at);
+    }
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 <p style="font-family:sans-serif;padding:24px;color:#555">Loading MRL Maker…</p>
