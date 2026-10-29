@@ -5,6 +5,51 @@
   if (window.__cafhComplianceUI) return;
   window.__cafhComplianceUI = true;
 
+  /** Resolve the FY the user selected in the top bar (not server current). */
+  function getSelectedFY() {
+    try {
+      var lb = document.getElementById('fy-label');
+      if (lb) {
+        var m = (lb.textContent || '').match(/(\d{4}-\d{2})/);
+        if (m) return m[1];
+      }
+    } catch (e) {}
+    try {
+      var pt = document.getElementById('pt');
+      if (pt) {
+        var m2 = (pt.textContent || '').match(/FY\s+(\d{4}-\d{2})/);
+        if (m2) return m2[1];
+      }
+    } catch (e) {}
+    if (window.FY && /^\d{4}-\d{2}$/.test(String(window.FY))) return String(window.FY);
+    try {
+      if (typeof getCurFY === 'function') {
+        var g = getCurFY();
+        if (g) return g;
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function patchPickFy() {
+    if (window.__cafhPickFyPatched || typeof window.pickFy !== 'function') return;
+    window.__cafhPickFyPatched = true;
+    var _pick = window.pickFy;
+    window.pickFy = async function (f, locked) {
+      var r = await _pick.apply(this, arguments);
+      try { if (f && !locked) window.FY = f; } catch (e) {}
+      setTimeout(function () {
+        try {
+          if ((document.getElementById('pt') || {}).textContent &&
+              (document.getElementById('pt').textContent || '').indexOf('Compliance Calendar') >= 0) {
+            cafhRenderBifurcatedCalendar();
+          }
+        } catch (e) {}
+      }, 400);
+      return r;
+    };
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": '&#39;' })[c];
@@ -12,7 +57,7 @@
   }
 
   window.cafhSeedEnhanced = async function () {
-    var fy = window.FY || (typeof getCurFY === 'function' ? getCurFY() : '') || '';
+    var fy = getSelectedFY();
     fy = prompt('Financial year to seed (firm-level deadlines)', fy || '2026-27');
     if (!fy) return;
     try {
@@ -76,7 +121,7 @@
   }
 
   window.cafhRenderBifurcatedCalendar = async function () {
-    var fy = window.FY || (typeof getCurFY === 'function' ? getCurFY() : '') || '';
+    var fy = getSelectedFY();
     if (!fy) return;
     var pb = document.getElementById('pb');
     if (!pb) return;
@@ -121,6 +166,8 @@
     var _lCalendar = window.lCalendar;
     window.lCalendar = async function () {
       await _lCalendar.apply(this, arguments);
+      var old = document.getElementById('cafh-bifurcated-host');
+      if (old) { try { old.remove(); } catch (e) {} }
       await cafhRenderBifurcatedCalendar();
     };
   }
@@ -175,30 +222,18 @@
     if (window.__cafhRunImportPatched) return;
     window.__cafhRunImportPatched = true;
     var _origRunImport = window.runImport;
-
     window.runImport = async function (kind) {
-      if (kind !== 'clients') {
-        return _origRunImport.apply(this, arguments);
-      }
-
+      if (kind !== 'clients') return _origRunImport.apply(this, arguments);
       var fi = document.getElementById('imp-file');
-      if (!fi || !fi.files || !fi.files.length) {
-        toast('Select a file first', 'err');
-        return;
-      }
+      if (!fi || !fi.files || !fi.files.length) { toast('Select a file first', 'err'); return; }
       var btn = document.getElementById('imp-go');
       if (btn) { btn.disabled = true; btn.textContent = 'Importing...'; }
-
       var fd = new FormData();
       fd.append('file', fi.files[0]);
-      fd.append('fy', (window.FY || (typeof getCurFY === 'function' ? getCurFY() : '') || ''));
-
+      fd.append('fy', getSelectedFY());
       var packs = [];
-      document.querySelectorAll('.cafh-imp-pack:checked').forEach(function (c) {
-        packs.push(c.value);
-      });
+      document.querySelectorAll('.cafh-imp-pack:checked').forEach(function (c) { packs.push(c.value); });
       if (packs.length) fd.append('default_packs', packs.join(','));
-
       var token = (typeof T !== 'undefined' && T) || localStorage.getItem('token') || sessionStorage.getItem('token') || '';
       try {
         var r = await fetch('/api/clients/import-excel', {
@@ -209,23 +244,17 @@
         var res = {};
         try { res = await r.json(); } catch (e) { res = {}; }
         if (!r.ok) throw new Error(res.detail || res.message || ('Import failed (' + r.status + ')'));
-
         var lines = [];
         lines.push('<p><strong>' + (res.clients_created || 0) + '</strong> client(s) created, <strong>' + (res.clients_skipped || 0) + '</strong> skipped.</p>');
-        lines.push('<p><strong>' + (res.engagements_created || 0) + '</strong> engagement(s) in <strong>FY ' + (res.import_financial_year || window.FY || '') + '</strong>, <strong>' + (res.engagements_skipped || 0) + '</strong> skipped.</p>');
+        lines.push('<p><strong>' + (res.engagements_created || 0) + '</strong> engagement(s) in <strong>FY ' + (res.import_financial_year || getSelectedFY()) + '</strong>, <strong>' + (res.engagements_skipped || 0) + '</strong> skipped.</p>');
         if ('packs_applied' in res || 'calendar_items_added' in res) {
           lines.push('<p><strong>' + (res.packs_applied || 0) + '</strong> client(s) got compliance packs; <strong>' + (res.calendar_items_added || 0) + '</strong> calendar item(s) added.</p>');
         }
         if (res.errors && res.errors.length) {
           lines.push('<p style="color:var(--err)"><strong>Errors:</strong><br>' + res.errors.slice(0, 8).map(esc).join('<br>') + '</p>');
         }
-        if (res.warnings && res.warnings.length) {
-          lines.push('<p style="color:var(--warn)"><strong>Warnings:</strong><br>' + res.warnings.slice(0, 5).map(esc).join('<br>') + '</p>');
-        }
         var box = document.getElementById('imp-result');
-        if (box) {
-          box.innerHTML = '<div style="margin-top:12px;padding:12px;background:#F0FFF4;border-radius:8px;font-size:13px">' + lines.join('') + '</div>';
-        }
+        if (box) box.innerHTML = '<div style="margin-top:12px;padding:12px;background:#F0FFF4;border-radius:8px;font-size:13px">' + lines.join('') + '</div>';
         toast('Import complete', 'ok');
         if (typeof loadAll === 'function') try { await loadAll(); } catch (e) {}
         if (typeof lClients === 'function') try { lClients(); } catch (e) {}
@@ -255,6 +284,7 @@
     patchFilterCal();
     patchImportFm();
     patchRunImport();
+    patchPickFy();
     var pa = document.getElementById('pa');
     if (!pa || pa.dataset.cafhComp) return;
     var pt = document.getElementById('pt');
@@ -273,4 +303,5 @@
   patchFilterCal();
   patchImportFm();
   patchRunImport();
+  patchPickFy();
 })();
