@@ -171,60 +171,66 @@
   }
 
   function patchRunImport() {
-    if (window.__cafhRunImportPatched || typeof window.runImport !== 'function') return;
+    if (typeof window.runImport !== 'function') return;
+    if (window.__cafhRunImportPatched) return;
     window.__cafhRunImportPatched = true;
+    var _origRunImport = window.runImport;
+
     window.runImport = async function (kind) {
       if (kind !== 'clients') {
-        // fall through to original via re-fetch pattern — call native path
-        var cfg0 = (window.IMPORT_CFG || {})[kind];
-        if (!cfg0) return;
-        var fi0 = document.getElementById('imp-file');
-        if (!fi0 || !fi0.files.length) return toast('Select a file first', 'err');
-        var btn0 = document.getElementById('imp-go');
-        if (btn0) { btn0.disabled = true; btn0.textContent = 'Importing...'; }
-        var fd0 = new FormData();
-        fd0.append('file', fi0.files[0]);
-        try {
-          var r0 = await fetch(cfg0.upload, { method: 'POST', headers: { Authorization: 'Bearer ' + T }, body: fd0 });
-          var res0 = await r0.json();
-          if (!r0.ok) throw new Error(res0.detail || 'Import failed');
-          toast('Import complete', 'ok');
-          if (typeof loadAll === 'function') try { await loadAll(); } catch (e) {}
-        } catch (e) { toast(e.message || 'Import failed', 'err'); }
-        finally { if (btn0) { btn0.disabled = false; btn0.textContent = 'Import'; } }
+        return _origRunImport.apply(this, arguments);
+      }
+
+      var fi = document.getElementById('imp-file');
+      if (!fi || !fi.files || !fi.files.length) {
+        toast('Select a file first', 'err');
         return;
       }
-      var cfg = (window.IMPORT_CFG || {})[kind];
-      if (!cfg) return;
-      var fi = document.getElementById('imp-file');
-      if (!fi || !fi.files.length) return toast('Select a file first', 'err');
       var btn = document.getElementById('imp-go');
       if (btn) { btn.disabled = true; btn.textContent = 'Importing...'; }
+
       var fd = new FormData();
       fd.append('file', fi.files[0]);
-      fd.append('fy', window.FY || '');
+      fd.append('fy', (window.FY || (typeof getCurFY === 'function' ? getCurFY() : '') || ''));
+
       var packs = [];
-      document.querySelectorAll('.cafh-imp-pack:checked').forEach(function (c) { packs.push(c.value); });
+      document.querySelectorAll('.cafh-imp-pack:checked').forEach(function (c) {
+        packs.push(c.value);
+      });
       if (packs.length) fd.append('default_packs', packs.join(','));
+
+      var token = (typeof T !== 'undefined' && T) || localStorage.getItem('token') || sessionStorage.getItem('token') || '';
       try {
-        var r = await fetch(cfg.upload, { method: 'POST', headers: { Authorization: 'Bearer ' + T }, body: fd });
-        var res = await r.json();
-        if (!r.ok) throw new Error(res.detail || 'Import failed');
+        var r = await fetch('/api/clients/import-excel', {
+          method: 'POST',
+          headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+          body: fd
+        });
+        var res = {};
+        try { res = await r.json(); } catch (e) { res = {}; }
+        if (!r.ok) throw new Error(res.detail || res.message || ('Import failed (' + r.status + ')'));
+
         var lines = [];
         lines.push('<p><strong>' + (res.clients_created || 0) + '</strong> client(s) created, <strong>' + (res.clients_skipped || 0) + '</strong> skipped.</p>');
-        lines.push('<p><strong>' + (res.engagements_created || 0) + '</strong> engagement(s) in <strong>FY ' + (res.import_financial_year || FY) + '</strong>, <strong>' + (res.engagements_skipped || 0) + '</strong> skipped.</p>');
-        if ('packs_applied' in res) {
+        lines.push('<p><strong>' + (res.engagements_created || 0) + '</strong> engagement(s) in <strong>FY ' + (res.import_financial_year || window.FY || '') + '</strong>, <strong>' + (res.engagements_skipped || 0) + '</strong> skipped.</p>');
+        if ('packs_applied' in res || 'calendar_items_added' in res) {
           lines.push('<p><strong>' + (res.packs_applied || 0) + '</strong> client(s) got compliance packs; <strong>' + (res.calendar_items_added || 0) + '</strong> calendar item(s) added.</p>');
         }
         if (res.errors && res.errors.length) {
           lines.push('<p style="color:var(--err)"><strong>Errors:</strong><br>' + res.errors.slice(0, 8).map(esc).join('<br>') + '</p>');
         }
+        if (res.warnings && res.warnings.length) {
+          lines.push('<p style="color:var(--warn)"><strong>Warnings:</strong><br>' + res.warnings.slice(0, 5).map(esc).join('<br>') + '</p>');
+        }
         var box = document.getElementById('imp-result');
-        if (box) box.innerHTML = '<div style="margin-top:12px;padding:12px;background:#F0FFF4;border-radius:8px;font-size:13px">' + lines.join('') + '</div>';
+        if (box) {
+          box.innerHTML = '<div style="margin-top:12px;padding:12px;background:#F0FFF4;border-radius:8px;font-size:13px">' + lines.join('') + '</div>';
+        }
         toast('Import complete', 'ok');
         if (typeof loadAll === 'function') try { await loadAll(); } catch (e) {}
         if (typeof lClients === 'function') try { lClients(); } catch (e) {}
       } catch (e) {
+        console.error('[cafh import]', e);
         toast(e.message || 'Import failed', 'err');
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Import'; }
