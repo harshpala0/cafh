@@ -8,55 +8,68 @@
       || '';
   }
 
-  // Intercept fetch so /api/clients always gets the real CA FirmHub JWT
   var _fetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     init = init || {};
     var url = typeof input === 'string' ? input : (input && input.url) || '';
     if (url.indexOf('/api/clients') !== -1) {
       var headers = new Headers(init.headers || (input && input.headers) || {});
-      if (!headers.get('Authorization') || headers.get('Authorization') === 'Bearer ') {
-        var t = jwt();
-        if (t) headers.set('Authorization', 'Bearer ' + t);
-      }
+      var t = jwt();
+      if (t) headers.set('Authorization', 'Bearer ' + t);
       if (!headers.get('Accept')) headers.set('Accept', 'application/json');
       init = Object.assign({}, init, { headers: headers });
     }
     return _fetch(input, init);
   };
 
-  // TaxGuru format letter builder override (uses global STATE from app IIFE if exposed)
-  function field(a, id, def) {
-    if (a && a.fields && a.fields[id]) return a.fields[id];
-    return def || '';
+  function val(id) {
+    var el = document.getElementById(id);
+    return el ? (el.value || '').trim() : '';
   }
-  function lineStatus(answers, id, defaultText) {
-    var a = answers[id];
-    if (!a || !a.status || a.status === 'yes') return defaultText;
-    if (a.status === 'na') return defaultText + ' [N/A for this engagement]';
-    if (a.notes) return defaultText + ' Exception: ' + a.notes;
-    return defaultText + ' [Exception — see working papers]';
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": '&#39;' })[c];
+    });
   }
 
-  window.buildTaxLetter = function () {
+  function taxGuruLetter() {
+    var cn = val('f-client') || ((window.__clients || []).find(function () { return false; }) && '') ||
+      (document.getElementById('f-client') && document.getElementById('f-client').value) || '________';
+    // Prefer STATE if exposed
     var S = window.__MRL_STATE || window.STATE || {};
-    var c = S.client || {};
+    if (S.client && S.client.name) cn = S.client.name;
     var m = S.meta || {};
+    var auditor = m.auditorName || val('f-auditor') || 'M/s ________';
+    var auditorAddr = m.auditorAddress || val('f-auditor-addr') || '';
+    var letterDate = m.letterDate || val('f-date') || '________';
+    var ye = m.yearEnd || val('f-ye') || '________';
+    var ay = m.assessmentYear || val('f-ay') || '________';
+    var sign = m.signatoryName || val('f-sign') || '________';
+    var desig = m.signatoryDesignation || val('f-desig') || 'Director / Partner / Proprietor';
+    var din = m.signatoryDin || val('f-din') || '';
+    var place = m.place || val('f-place') || '________';
+    var addr = (S.client && S.client.address) || val('f-addr') || '';
+    var gstin = (S.client && S.client.gstin) || val('f-gstin') || '';
     var A = S.answers || {};
-    var ye = m.yearEnd || '________';
-    var ay = m.assessmentYear || '________';
-    var cn = c.name || '________';
+
+    function lineStatus(id, text) {
+      var a = A[id];
+      if (!a || !a.status || a.status === 'yes') return text;
+      if (a.status === 'na') return text + ' [N/A for this engagement]';
+      if (a.notes) return text + ' Exception: ' + a.notes;
+      return text + ' [Exception — see working papers]';
+    }
     var L = [];
-    function t(n, text) { L.push(lineStatus(A, 'T' + n, text)); }
+    function t(n, text) { L.push(lineStatus('T' + n, text)); }
 
     L.push('[ON THE LETTER HEAD OF AUDITEE]');
     L.push('');
-    L.push('Date: ' + (m.letterDate || '________'));
+    L.push('Date: ' + letterDate);
     L.push('');
     L.push('To,');
-    L.push(m.auditorName || 'M/s ________');
+    L.push(auditor);
     L.push('Chartered Accountants');
-    if (m.auditorAddress) L.push(m.auditorAddress);
+    if (auditorAddr) L.push(auditorAddr);
     L.push('');
     L.push('Sub: Management Representation in course of Tax Audit for A.Y. ' + ay);
     L.push('');
@@ -64,13 +77,13 @@
     L.push('');
     L.push('Please find enclosed a copy of Form 3CD along with all relevant details for the purpose of conducting the Tax Audit of ' + cn + ', for the year ended ' + ye + '. In this connection, we further confirm that:');
     L.push('');
-    t('1', '1. The address that we have reported in Clause 2 of the Form 3CD is same as we have informed to the Income Tax Department; there is no change in the same' + (field(A.T1, 'addr', c.address || '') ? ' (' + field(A.T1, 'addr', c.address) + ')' : '') + '.');
-    t('2', '2. That the registration or identification number, if any, under indirect tax laws including excise duty, goods & service tax, sales tax, customs duty, etc. as informed to you and reported in Clause 4 of Form 3CD are correct and there is no other number other than what is reported in said clause' + (field(A.T2, 'regs', c.gstin || '') ? ' [' + field(A.T2, 'regs', c.gstin) + ']' : '') + '.');
+    t('1', '1. The address that we have reported in Clause 2 of the Form 3CD is same as we have informed to the Income Tax Department; there is no change in the same' + (addr ? ' (' + addr + ')' : '') + '.');
+    t('2', '2. That the registration or identification number, if any, under indirect tax laws including excise duty, goods & service tax, sales tax, customs duty, etc. as informed to you and reported in Clause 4 of Form 3CD are correct and there is no other number other than what is reported in said clause' + (gstin ? ' [GSTIN: ' + gstin + ']' : '') + '.');
     t('3', '3. We certify, there has been no change in the partners or members or in their profit sharing ratio since the last date of the preceding year during the year under report as stated in clause 9(b) of Form 3CD.');
     t('4', '4. We certify, there has been no change in the nature of business during the year under report as stated in clause 10(a) of Form 3CD.');
     t('5', '5. That the List of books of account as prescribed u/s 44AA have been maintained and the address at which the books of accounts are kept as reported in Clause 11 has been informed by us and there are no other books and no other location at which books are kept.');
     t('6', '6. We confirm that the profit and loss account does not include any profits and gains assessable on presumptive basis under relevant sections 44AD, 44AE, 44AF, 44B, 44BB, 44BBA, 44BBB or any other relevant section as stated in clause 12 of Form 3CD.');
-    t('7', '7. The assessee has followed the ' + (field(A.T7, 'acct_method', 'mercantile') || 'mercantile') + ' system of accounting & there is ' + (field(A.T7, 'acct_change', 'No') === 'Yes' ? 'a change' : 'no change') + ' in the method of accounting employed in the immediately preceding previous year, for the preparation of final accounts for the year ended ' + ye + ' as stated in clause 13 of Form 3CD.');
+    t('7', '7. The assessee has followed the mercantile system of accounting & there is no change in the method of accounting employed in the immediately preceding previous year, for the preparation of final accounts for the year ended ' + ye + ' as stated in clause 13 of Form 3CD.');
     t('8', '8. We certify that the valuation of closing stock is on the same basis & there is no deviation from the method of valuation prescribed under section 145A as stated in clause 14 of Form 3CD.');
     t('9', '9. We certify that there are no capital assets which are converted into stock in trade as stated in clause 15 of Form 3CD.');
     t('10', '10. We certify there is no capital receipt which is credited to Profit & Loss Account as stated in clause 16 of Form 3CD.');
@@ -113,19 +126,51 @@
     L.push('By order of the Board / For ' + cn);
     L.push('');
     L.push('Sd/-');
-    L.push(m.signatoryName || '________');
-    L.push(m.signatoryDesignation || 'Director / Partner / Proprietor');
-    if (m.signatoryDin) L.push('DIN- ' + m.signatoryDin);
+    L.push(sign);
+    L.push(desig);
+    if (din) L.push('DIN- ' + din);
     L.push('');
-    L.push('Place:- ' + (m.place || '________'));
-    L.push('Date:- ' + (m.letterDate || '________'));
+    L.push('Place:- ' + place);
+    L.push('Date:- ' + letterDate);
     L.push('');
     L.push('— CA FirmHub MRL Maker · Designed & Built by Harsh Pala —');
     L.push('(Format adapted from TaxGuru draft MRL on Tax Audit)');
     return L.join('\n');
-  };
+  }
 
-  // Retry client dropdown after app paints setup (uses fixed fetch)
+  window.buildTaxLetter = taxGuruLetter;
+
+  function installBuildLetter() {
+    var orig = window.buildLetter;
+    if (!orig || orig.__taxguru) return;
+    function wrapped() {
+      var mode = (window.__MRL_STATE && window.__MRL_STATE.mode) || (window.STATE && window.STATE.mode) || 'tax';
+      // Detect tax from UI if needed
+      var taxBtn = document.querySelector('.status-row button.on-yes');
+      if (taxBtn && /Tax Audit/i.test(taxBtn.textContent)) mode = 'tax';
+      if (mode === 'tax') {
+        var text = taxGuruLetter();
+        window.__letterText = text;
+        var content = document.getElementById('content');
+        if (content) {
+          content.innerHTML = '<div class="card"><h3>Management Representation Letter</h3>' +
+            '<p class="muted">TaxGuru draft format (45 points). Print for Times New Roman PDF.</p>' +
+            '<div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="btn btn-g" type="button" onclick="printLetter()">Print / Save as PDF</button>' +
+            '<button class="btn" type="button" onclick="downloadHtml()">Download HTML</button>' +
+            '<button class="btn" type="button" onclick="copyLetter()">Copy text</button></div>' +
+            '<div id="letter-preview">' + esc(text) + '</div></div>';
+        }
+        var pt = document.getElementById('page-title');
+        if (pt) pt.textContent = 'Full letter';
+        return;
+      }
+      return orig.apply(this, arguments);
+    }
+    wrapped.__taxguru = true;
+    window.buildLetter = wrapped;
+  }
+
   function retryClients() {
     var sel = document.getElementById('client-sel');
     if (!sel) return;
@@ -134,6 +179,7 @@
       sel.innerHTML = '<option value="">Not logged in — open main CA FirmHub, log in, then refresh this page</option>';
       return;
     }
+    // Always force reload so JWT is applied
     sel.innerHTML = '<option value="">Loading clients…</option>';
     fetch('/api/clients/', { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/json' } })
       .then(function (r) {
@@ -157,11 +203,15 @@
       });
   }
 
+  setTimeout(installBuildLetter, 200);
+  setTimeout(installBuildLetter, 800);
   setTimeout(retryClients, 300);
   setTimeout(retryClients, 1200);
   var obs = new MutationObserver(function () {
-    if (document.getElementById('client-sel') && document.getElementById('client-sel').options.length <= 1) {
-      retryClients();
+    installBuildLetter();
+    var sel = document.getElementById('client-sel');
+    if (sel && sel.options.length <= 1 && /Loading|Not logged|Failed|Select client|No clients/i.test(sel.options[0] && sel.options[0].text || '')) {
+      // only auto-retry when empty/error
     }
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
