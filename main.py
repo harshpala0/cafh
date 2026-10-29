@@ -59,5 +59,171 @@ app = _ns["app"]
 
 from flask import Response as _Response
 
-# Continue with mobile inject and enhance modules from existing file body...
-# (full mobile + enhance registration preserved below via reading prior content)
+_MOBILE_HEAD = """
+<meta name="theme-color" content="#003366">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CA FirmHub">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+"""
+
+_MOBILE_BODY = (
+    '<script src="/static/mobile.js" defer></script>\n'
+    '<script src="/static/staff-ui.js" defer></script>\n'
+    '<script src="/static/compliance-ui.js" defer></script>\n'
+    '<script src="/static/ops-ui.js" defer></script>\n'
+    '<script src="/static/notify-ui.js" defer></script>\n'
+    '<script src="/static/verify-ui.js" defer></script>\n'
+    '<script src="/static/library-ui.js" defer></script>\n'
+    '<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js").catch(function(){}); }</script>\n'
+)
+
+
+def _serve_index_with_mobile():
+    try:
+        path = Path(__file__).resolve().parent / "static" / "index.html"
+        html = path.read_text(encoding="utf-8")
+        if "manifest.webmanifest" not in html:
+            html = html.replace("</head>", _MOBILE_HEAD + "</head>", 1)
+        if "staff-ui.js" not in html and "library-ui.js" not in html:
+            idx = html.rfind("</body>")
+            if idx != -1:
+                html = html[:idx] + _MOBILE_BODY + html[idx:]
+        return _Response(html, mimetype="text/html")
+    except Exception as e:
+        return _Response(f"Error loading app: {e}", status=500, mimetype="text/plain")
+
+
+try:
+    app.view_functions["index"] = lambda: _serve_index_with_mobile()
+except Exception:
+    try:
+        @app.route("/")
+        def index():
+            return _serve_index_with_mobile()
+    except Exception as e:
+        print("[CA FirmHub] index inject:", e)
+
+
+try:
+    from portal import register_portal
+    register_portal(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+        "qry_id": _ns.get("qry_id"),
+        "upload_to_r2": _ns.get("_upload_to_r2"),
+        "hash_pw": _ns.get("hash_pw"),
+    })
+except Exception as _portal_err:
+    print("[CA FirmHub] Portal module not loaded:", _portal_err)
+
+
+try:
+    from compliance_enhance import register_compliance_enhance
+    register_compliance_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+        "qry_id": _ns.get("qry_id"),
+    })
+except Exception as _comp_err:
+    print("[CA FirmHub] Compliance enhance not loaded:", _comp_err)
+
+
+try:
+    from import_packs_enhance import register_import_packs_enhance
+    register_import_packs_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+        "qry_id": _ns.get("qry_id"),
+    })
+except Exception as _imp_err:
+    print("[CA FirmHub] Import packs enhance not loaded:", _imp_err)
+
+
+try:
+    from ops_enhance import register_ops_enhance
+    register_ops_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _ops_err:
+    print("[CA FirmHub] Ops enhance not loaded:", _ops_err)
+
+
+try:
+    from notify_enhance import register_notify_enhance
+    register_notify_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _notify_err:
+    print("[CA FirmHub] Notify enhance not loaded:", _notify_err)
+
+
+try:
+    from cron_enhance import register_cron_enhance
+    register_cron_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _cron_err:
+    print("[CA FirmHub] Cron enhance not loaded:", _cron_err)
+
+
+try:
+    from verify_enhance import register_verify_enhance
+    register_verify_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _verify_err:
+    print("[CA FirmHub] Verify enhance not loaded:", _verify_err)
+
+
+try:
+    from library_enhance import register_library_enhance
+    register_library_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _lib_err:
+    print("[CA FirmHub] Library enhance not loaded:", _lib_err)
+
+
+try:
+    def _sa_with_library():
+        path = Path(__file__).resolve().parent / "static" / "superadmin.html"
+        html = path.read_text(encoding="utf-8")
+        tag = '<script src="/static/superadmin-library.js" defer></script>\n'
+        if "superadmin-library.js" not in html and "</body>" in html:
+            html = html.replace("</body>", tag + "</body>", 1)
+        return _Response(html, mimetype="text/html")
+    app.view_functions["superadmin_page"] = _sa_with_library
+except Exception as _sa_lib_err:
+    print("[CA FirmHub] SuperAdmin library UI inject:", _sa_lib_err)
