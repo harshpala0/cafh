@@ -141,6 +141,18 @@ except Exception as _comp_err:
 
 
 try:
+    from compliance_board_extra import register_compliance_board_extra
+    register_compliance_board_extra(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+    })
+except Exception as _cbe:
+    print("[CA FirmHub] Compliance board extra not loaded:", _cbe)
+
+
+try:
     from import_packs_enhance import register_import_packs_enhance
     register_import_packs_enhance(app, {
         "qry": _ns["qry"],
