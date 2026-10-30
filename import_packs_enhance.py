@@ -1,12 +1,12 @@
 """CA FirmHub — Excel import with Compliance Packs.
 Designed & Built by Harsh Pala.
-Overrides clients import template + excel handler.
+Separate ITR (non-audit) and TAX_AUDIT packs; Tax Audit Applicable column.
 """
 from datetime import date
 from flask import request, jsonify, g, Response
 
 
-ALLOWED_PACKS = ("GST_MONTHLY", "GST_QRMP", "TDS", "ITR", "ROC", "PF_ESI")
+ALLOWED_PACKS = ("GST_MONTHLY", "GST_QRMP", "TDS", "ITR", "TAX_AUDIT", "ROC", "PF_ESI")
 
 
 def register_import_packs_enhance(app, helpers):
@@ -63,6 +63,7 @@ def register_import_packs_enhance(app, helpers):
             "GST": "GST_MONTHLY", "GSTMONTHLY": "GST_MONTHLY", "GST_MONTHLY": "GST_MONTHLY",
             "QRMP": "GST_QRMP", "GSTQRMP": "GST_QRMP", "GST_QRMP": "GST_QRMP",
             "TDS": "TDS", "ITR": "ITR", "INCOME_TAX": "ITR", "INCOMETAX": "ITR",
+            "TAX_AUDIT": "TAX_AUDIT", "TAXAUDIT": "TAX_AUDIT", "AUDIT": "TAX_AUDIT",
             "ROC": "ROC", "PF": "PF_ESI", "ESI": "PF_ESI", "PF_ESI": "PF_ESI", "PFESI": "PF_ESI",
         }
         out = []
@@ -72,6 +73,16 @@ def register_import_packs_enhance(app, helpers):
             if p2 in ALLOWED_PACKS and p2 not in out:
                 out.append(p2)
         return out
+
+    def _parse_audit_flag(val):
+        if val is None:
+            return None
+        s = str(val).strip().upper()
+        if s in ("Y", "YES", "TRUE", "1", "APPLICABLE"):
+            return True
+        if s in ("N", "NO", "FALSE", "0", "NOT APPLICABLE", "NA"):
+            return False
+        return None
 
     def _parse_engagement_types(cell):
         if cell is None:
@@ -91,10 +102,13 @@ def register_import_packs_enhance(app, helpers):
                 found.append(can)
         return found if found else [f"Other:{text}"]
 
-    def _client_deadlines(packs, name, sy, ey):
+    def _client_deadlines(packs, name, sy, ey, tax_audit_applicable=None):
         packs = set((packs or "").upper().replace(" ", "").split(","))
         packs.discard("")
         items, name = [], name or "Client"
+        itr_non = f"{ey}-07-31"
+        tax_audit = f"{ey}-09-30"
+        itr_audit = f"{ey}-10-31"
         if "GST_MONTHLY" in packs:
             for y, m in [(sy, m) for m in range(4, 13)] + [(ey, m) for m in range(1, 4)]:
                 dy, dm = (y + 1, 1) if m == 12 else (y, m + 1)
@@ -112,13 +126,30 @@ def register_import_packs_enhance(app, helpers):
             ]
         if "TDS" in packs:
             items += [
-                (f"{name}: TDS Q1", "TDS", f"{sy}-07-31"), (f"{name}: TDS Q2", "TDS", f"{sy}-10-31"),
-                (f"{name}: TDS Q3", "TDS", f"{ey}-01-31"), (f"{name}: TDS Q4", "TDS", f"{ey}-05-31"),
+                (f"{name}: TDS Q1", "TDS", f"{sy}-07-31"),
+                (f"{name}: TDS Q2", "TDS", f"{sy}-10-31"),
+                (f"{name}: TDS Q3", "TDS", f"{ey}-01-31"),
+                (f"{name}: TDS Q4", "TDS", f"{ey}-05-31"),
             ]
-        if "ITR" in packs:
-            items += [(f"{name}: ITR filing", "ITR", f"{ey}-07-31"), (f"{name}: Tax audit", "ITR", f"{ey}-10-31")]
+        has_itr = "ITR" in packs
+        has_ta = "TAX_AUDIT" in packs
+        if tax_audit_applicable is True:
+            has_ta = True
+            has_itr = False
+        elif tax_audit_applicable is False:
+            has_ta = False
+        if has_itr and not has_ta:
+            items.append((f"{name}: ITR filing (non-audit)", "ITR", itr_non))
+        if has_ta:
+            items += [
+                (f"{name}: Tax audit report u/s 44AB", "Tax Audit", tax_audit),
+                (f"{name}: ITR filing (tax audit)", "ITR", itr_audit),
+            ]
         if "ROC" in packs:
-            items += [(f"{name}: AOC-4", "ROC", f"{ey}-10-29"), (f"{name}: MGT-7", "ROC", f"{ey}-11-29")]
+            items += [
+                (f"{name}: AOC-4", "ROC", f"{ey}-10-29"),
+                (f"{name}: MGT-7", "ROC", f"{ey}-11-29"),
+            ]
         if "PF_ESI" in packs:
             for y, m in [(sy, m) for m in range(4, 13)] + [(ey, m) for m in range(1, 4)]:
                 dy, dm = (y + 1, 1) if m == 12 else (y, m + 1)
@@ -151,7 +182,7 @@ def register_import_packs_enhance(app, helpers):
             (g.firm_id, title, cat, due, fy, uid),
         )
 
-    def _apply_packs(client_id, client_name, packs_list, fy):
+    def _apply_packs(client_id, client_name, packs_list, fy, tax_audit_applicable=None):
         if not packs_list:
             return 0
         packs_str = ",".join(packs_list)
@@ -166,7 +197,7 @@ def register_import_packs_enhance(app, helpers):
         except Exception:
             return 0
         added = 0
-        for title, cat, due in _client_deadlines(packs_str, client_name, sy, ey):
+        for title, cat, due in _client_deadlines(packs_str, client_name, sy, ey, tax_audit_applicable=tax_audit_applicable):
             if qry("SELECT id FROM compliance_calendar WHERE firm_id=%s AND title=%s AND financial_year=%s",
                    (g.firm_id, title, fy), one=True):
                 continue
@@ -186,20 +217,21 @@ def register_import_packs_enhance(app, helpers):
         ws = wb.active
         ws.title = "Clients Import"
         headers = ["Name of Client", "Type of Entity", "PAN", "Contact Person", "Phone",
-                   "Email", "Address", "Type of Engagement", "Compliance Packs"]
+                   "Email", "Address", "Type of Engagement", "Compliance Packs",
+                   "Tax Audit Applicable"]
         ws.append(headers)
         for c in ws[1]:
             c.font = Font(bold=True, color="FFFFFF")
             c.fill = PatternFill("solid", fgColor="2563EB")
         ws.append(["ABC Textiles Pvt Ltd", "Company", "ABCDE1234F", "Rajesh Shah", "9876543210",
                    "rajesh@abctextiles.com", "123, MG Road, Mumbai", "Statutory & Tax Audit",
-                   "GST_MONTHLY, TDS, ITR, ROC"])
+                   "GST_MONTHLY, TDS, TAX_AUDIT, ROC", "Y"])
         ws.append(["Sunrise Traders", "Firm", "FGHIJ5678K", "Priya Mehta", "9823456789",
                    "priya@sunrisetraders.com", "45, Market Street, Pune", "GST Audit",
-                   "GST_MONTHLY, ITR"])
+                   "GST_MONTHLY, ITR", "N"])
         ws.append(["Mehta Associates", "LLP", "KLMNO9012P", "Amit Mehta", "9988776655",
-                   "amit@mehta.in", "Ahmedabad", "Tax Audit", "ITR, TDS"])
-        for i, w in enumerate([26, 14, 14, 18, 14, 26, 28, 26, 32], 1):
+                   "amit@mehta.in", "Ahmedabad", "Tax Audit", "TAX_AUDIT, TDS", "Y"])
+        for i, w in enumerate([26, 14, 14, 18, 14, 26, 28, 26, 28, 18], 1):
             ws.column_dimensions[get_column_letter(i)].width = w
 
         packs_ws = wb.create_sheet("Packs Checklist")
@@ -211,18 +243,19 @@ def register_import_packs_enhance(app, helpers):
             ("", "GST_MONTHLY", "Monthly GSTR-1 & GSTR-3B for the import FY"),
             ("", "GST_QRMP", "Quarterly GSTR-1 QRMP dates"),
             ("", "TDS", "Quarterly TDS return dates"),
-            ("", "ITR", "ITR filing + Tax audit dates"),
+            ("", "ITR", "ITR filing only (non-audit) — 31 July of AY"),
+            ("", "TAX_AUDIT", "Tax audit report 30 Sep + ITR (audit) 31 Oct of AY"),
             ("", "ROC", "AOC-4 and MGT-7 dates"),
             ("", "PF_ESI", "Monthly PF/ESI dates"),
         ]:
             packs_ws.append(list(row))
         packs_ws.append([])
         packs_ws.append(["How to use", "In column Compliance Packs, write codes separated by commas."])
-        packs_ws.append(["Example", "GST_MONTHLY, ITR, ROC"])
-        packs_ws.append(["Optional", "Or tick default packs in the Import dialog when Excel cell is blank."])
+        packs_ws.append(["Example", "GST_MONTHLY, ITR, ROC  OR  GST_MONTHLY, TAX_AUDIT"])
+        packs_ws.append(["Tax Audit Applicable", "Y = force tax-audit dates (Sep/Oct). N = non-audit ITR only (31 Jul)."])
         packs_ws.column_dimensions["A"].width = 12
         packs_ws.column_dimensions["B"].width = 16
-        packs_ws.column_dimensions["C"].width = 55
+        packs_ws.column_dimensions["C"].width = 60
 
         notes = wb.create_sheet("Instructions")
         notes.append(["Column", "Notes"])
@@ -232,8 +265,8 @@ def register_import_packs_enhance(app, helpers):
             ("Type of Entity", "Company / Firm / LLP / Individual / Trust / HUF / AOP/BOI"),
             ("PAN", "Optional; primary duplicate check."),
             ("Type of Engagement", "e.g. Statutory Audit, Tax Audit, or combined."),
-            ("Compliance Packs", "Comma-separated: GST_MONTHLY, GST_QRMP, TDS, ITR, ROC, PF_ESI. "
-             "Saved on client; statutory calendar generated for selected FY."),
+            ("Compliance Packs", "GST_MONTHLY, GST_QRMP, TDS, ITR, TAX_AUDIT, ROC, PF_ESI. ITR = non-audit only. TAX_AUDIT = audit report + audited ITR."),
+            ("Tax Audit Applicable", "Y or N. Overrides pack mix: Y forces TAX_AUDIT dates; N forces non-audit ITR when ITR is selected."),
             ("Financial Year", "Uses Dashboard FY selector at import time."),
         ]:
             notes.append(list(r))
@@ -276,6 +309,12 @@ def register_import_packs_enhance(app, helpers):
         for cand in ("Compliance Packs", "Compliance packs", "Packs", "compliance_packs", "PACKS"):
             if cand in df.columns:
                 packs_col = cand
+                break
+        audit_col = None
+        for cand in ("Tax Audit Applicable", "Tax audit applicable", "Tax Audit", "tax_audit_applicable",
+                     "Tax Audit Y/N", "Audit Applicable"):
+            if cand in df.columns:
+                audit_col = cand
                 break
 
         def cell(row, col):
@@ -349,8 +388,14 @@ def register_import_packs_enhance(app, helpers):
 
             packs_text = cell(row, packs_col) if packs_col else None
             packs_list = _parse_packs_cell(packs_text) if packs_text else list(default_packs)
+            audit_flag = _parse_audit_flag(cell(row, audit_col)) if audit_col else None
+            if audit_flag is True and "TAX_AUDIT" not in packs_list:
+                packs_list = list(packs_list) + ["TAX_AUDIT"]
+                packs_list = [p for p in packs_list if p != "ITR"]
+            if audit_flag is False:
+                packs_list = [p for p in packs_list if p != "TAX_AUDIT"]
             if packs_list:
-                n = _apply_packs(client_id, name, packs_list, import_fy)
+                n = _apply_packs(client_id, name, packs_list, import_fy, tax_audit_applicable=audit_flag)
                 packs_applied += 1
                 calendar_added += n
 
