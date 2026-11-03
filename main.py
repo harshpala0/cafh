@@ -150,6 +150,20 @@ except Exception as _sub_email_err:
 
 
 try:
+    from firm_scoped_login import register_firm_scoped_login
+    register_firm_scoped_login(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "SECRET_KEY": _ns.get("SECRET_KEY"),
+        "check_pw": _ns.get("check_pw"),
+        "make_token": _ns.get("make_token"),
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _fsl_err:
+    print("[CA FirmHub] Firm-scoped login not loaded:", _fsl_err)
+
+
+try:
     from compliance_enhance import register_compliance_enhance
     register_compliance_enhance(app, {
         "qry": _ns["qry"],
