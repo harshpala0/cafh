@@ -1,6 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
-Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker.
+Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker,
+email-based subscription gate.
 """
 import urllib.request
 from pathlib import Path
@@ -71,6 +72,7 @@ _MOBILE_HEAD = """
 
 _MOBILE_BODY = (
     '<script src="/static/mobile.js" defer></script>\n'
+    '<script src="/static/subscription-email-ui.js" defer></script>\n'
     '<script src="/static/staff-ui.js" defer></script>\n'
     '<script src="/static/compliance-ui.js" defer></script>\n'
     '<script src="/static/ops-ui.js" defer></script>\n'
@@ -92,6 +94,8 @@ def _serve_index_with_mobile():
             idx = html.rfind("</body>")
             if idx != -1:
                 html = html[:idx] + _MOBILE_BODY + html[idx:]
+        if "subscription-email-ui.js" not in html and "</body>" in html:
+            html = html.replace("</body>", '<script src="/static/subscription-email-ui.js" defer></script>\n</body>', 1)
         if "mrl-ui.js" not in html and "</body>" in html:
             html = html.replace("</body>", '<script src="/static/mrl-ui.js" defer></script>\n</body>', 1)
         return _Response(html, mimetype="text/html")
@@ -124,6 +128,20 @@ try:
     })
 except Exception as _portal_err:
     print("[CA FirmHub] Portal module not loaded:", _portal_err)
+
+
+try:
+    from subscription_email_enhance import register_subscription_email_enhance
+    register_subscription_email_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "superadmin_required": _ns.get("superadmin_required"),
+        "SECRET_KEY": _ns.get("SECRET_KEY"),
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+    })
+except Exception as _sub_email_err:
+    print("[CA FirmHub] Subscription email enhance not loaded:", _sub_email_err)
 
 
 try:
@@ -235,9 +253,14 @@ try:
     def _sa_with_library():
         path = Path(__file__).resolve().parent / "static" / "superadmin.html"
         html = path.read_text(encoding="utf-8")
-        tag = '<script src="/static/superadmin-library.js" defer></script>\n'
+        tag = (
+            '<script src="/static/subscription-email-ui.js" defer></script>\n'
+            '<script src="/static/superadmin-library.js" defer></script>\n'
+        )
         if "superadmin-library.js" not in html and "</body>" in html:
             html = html.replace("</body>", tag + "</body>", 1)
+        elif "subscription-email-ui.js" not in html and "</body>" in html:
+            html = html.replace("</body>", '<script src="/static/subscription-email-ui.js" defer></script>\n</body>', 1)
         return _Response(html, mimetype="text/html")
     app.view_functions["superadmin_page"] = _sa_with_library
 except Exception as _sa_lib_err:
