@@ -1,4 +1,4 @@
-/* CA FirmHub — email subscription gate | Designed & Built by Harsh Pala */
+/* CA FirmHub — email subscription gate + firm-scoped login | Designed & Built by Harsh Pala */
 (function () {
   if (window.__cafhSubEmail) return;
   window.__cafhSubEmail = true;
@@ -57,9 +57,9 @@
       var tok = d.subscription_token;
       if (!tok) throw new Error('No token returned');
       try {
-        localStorage.setItem('cafirmhub_sub_token', tok);
-        var SUB_TOKEN_KEY = window.SUB_TOKEN_KEY || 'cafirmhub_sub_token';
+        var SUB_TOKEN_KEY = window.SUB_TOKEN_KEY || 'sub_tk';
         localStorage.setItem(SUB_TOKEN_KEY, tok);
+        localStorage.setItem('cafirmhub_sub_token', tok);
       } catch (e) {}
       if (typeof showLoginScreen === 'function') showLoginScreen();
       else {
@@ -83,6 +83,67 @@
     }
   };
 
+  function patchDoLogin() {
+    if (window.__cafhDoLoginPatched) return;
+    if (typeof window.doLogin !== 'function') return;
+    window.__cafhDoLoginPatched = true;
+    window.doLogin = async function () {
+      var uEl = document.getElementById('lu');
+      var pEl = document.getElementById('lp');
+      var err = document.getElementById('lerr');
+      var u = uEl ? uEl.value.trim() : '';
+      var p = pEl ? pEl.value : '';
+      if (!u || !p) {
+        if (err) { err.textContent = 'Enter username and password'; err.style.display = 'block'; }
+        return;
+      }
+      if (err) err.style.display = 'none';
+      var SUB_TOKEN_KEY = window.SUB_TOKEN_KEY || 'sub_tk';
+      var firmTok = '';
+      try {
+        firmTok = localStorage.getItem(SUB_TOKEN_KEY) || localStorage.getItem('cafirmhub_sub_token') || '';
+      } catch (e) {}
+      if (!firmTok) {
+        if (err) {
+          err.textContent = 'Subscription not verified. Go back and enter your firm subscription email first.';
+          err.style.display = 'block';
+        }
+        return;
+      }
+      try {
+        var r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p, subscription_token: firmTok })
+        });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) {
+          if (err) { err.textContent = d.detail || 'Login failed'; err.style.display = 'block'; }
+          return;
+        }
+        window.T = d.access_token;
+        window.U = d.user;
+        try {
+          localStorage.setItem('at', d.access_token);
+          localStorage.setItem('au', JSON.stringify(d.user));
+        } catch (e) {}
+        if (typeof _patchedShowApp === 'function') _patchedShowApp();
+        else if (typeof showApp === 'function') showApp();
+        if (typeof initFY === 'function') await initFY();
+        setTimeout(function () {
+          if (typeof nav === 'function') {
+            nav((d.user && d.user.role === 'Client') ? 'engagements' : 'dashboard');
+          }
+        }, 100);
+      } catch (e) {
+        if (err) {
+          err.textContent = 'Cannot connect to server. Is it running?';
+          err.style.display = 'block';
+        }
+      }
+    };
+  }
+
   function enhanceSuperAdmin() {
     var mo = document.getElementById('firm-mo');
     if (!mo || document.getElementById('firm-owner-email')) return;
@@ -93,7 +154,7 @@
     fg.innerHTML =
       '<label>Subscription email *</label>' +
       '<input type="email" id="firm-owner-email" placeholder="admin@yourfirm.com" style="width:100%">' +
-      '<p style="font-size:11px;color:#718096;margin-top:4px">Users enter this email on the subscription gate to reach your firm login. Must be unique across firms.</p>';
+      '<p style="font-size:11px;color:#718096;margin-top:4px">Users enter this email on the subscription gate. Must be unique across firms.</p>';
     body.appendChild(fg);
   }
 
@@ -137,9 +198,7 @@
             btn.textContent = 'Done';
             btn.onclick = function () { if (typeof closeMo === 'function') closeMo('firm-mo'); };
           }
-          if (typeof toast === 'function') {
-            toast('Firm created! Email gate: ' + (res.owner_email || email));
-          }
+          if (typeof toast === 'function') toast('Firm created! Email gate: ' + (res.owner_email || email));
         }
         if (typeof loadFirms === 'function') loadFirms();
       } catch (e) {
@@ -152,6 +211,7 @@
     enhanceGate();
     enhanceSuperAdmin();
     patchSaveFirm();
+    patchDoLogin();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
   setTimeout(enhanceGate, 50);
@@ -159,4 +219,6 @@
   setTimeout(enhanceSuperAdmin, 200);
   setTimeout(patchSaveFirm, 300);
   setTimeout(patchSaveFirm, 1000);
+  setTimeout(patchDoLogin, 300);
+  setTimeout(patchDoLogin, 1000);
 })();
