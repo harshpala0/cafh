@@ -57,8 +57,7 @@
       var tok = d.subscription_token;
       if (!tok) throw new Error('No token returned');
       try {
-        var SUB_TOKEN_KEY = window.SUB_TOKEN_KEY || 'sub_tk';
-        localStorage.setItem(SUB_TOKEN_KEY, tok);
+        localStorage.setItem('sub_tk', tok);
         localStorage.setItem('cafirmhub_sub_token', tok);
       } catch (e) {}
       if (typeof showLoginScreen === 'function') showLoginScreen();
@@ -83,66 +82,48 @@
     }
   };
 
-  function patchDoLogin() {
-    if (window.__cafhDoLoginPatched) return;
-    if (typeof window.doLogin !== 'function') return;
-    window.__cafhDoLoginPatched = true;
-    window.doLogin = async function () {
-      var uEl = document.getElementById('lu');
-      var pEl = document.getElementById('lp');
-      var err = document.getElementById('lerr');
-      var u = uEl ? uEl.value.trim() : '';
-      var p = pEl ? pEl.value : '';
-      if (!u || !p) {
-        if (err) { err.textContent = 'Enter username and password'; err.style.display = 'block'; }
-        return;
-      }
-      if (err) err.style.display = 'none';
-      var SUB_TOKEN_KEY = window.SUB_TOKEN_KEY || 'sub_tk';
-      var firmTok = '';
-      try {
-        firmTok = localStorage.getItem(SUB_TOKEN_KEY) || localStorage.getItem('cafirmhub_sub_token') || '';
-      } catch (e) {}
-      if (!firmTok) {
-        if (err) {
-          err.textContent = 'Subscription not verified. Go back and enter your firm subscription email first.';
-          err.style.display = 'block';
-        }
-        return;
-      }
-      try {
-        var r = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: u, password: p, subscription_token: firmTok })
-        });
-        var d = await r.json().catch(function () { return {}; });
-        if (!r.ok) {
-          if (err) { err.textContent = d.detail || 'Login failed'; err.style.display = 'block'; }
-          return;
-        }
-        window.T = d.access_token;
-        window.U = d.user;
-        try {
-          localStorage.setItem('at', d.access_token);
-          localStorage.setItem('au', JSON.stringify(d.user));
-        } catch (e) {}
-        if (typeof _patchedShowApp === 'function') _patchedShowApp();
-        else if (typeof showApp === 'function') showApp();
-        if (typeof initFY === 'function') await initFY();
-        setTimeout(function () {
-          if (typeof nav === 'function') {
-            nav((d.user && d.user.role === 'Client') ? 'engagements' : 'dashboard');
-          }
-        }, 100);
-      } catch (e) {
-        if (err) {
-          err.textContent = 'Cannot connect to server. Is it running?';
-          err.style.display = 'block';
+  // Inject subscription_token into login request WITHOUT replacing doLogin.
+  // Original doLogin assigns page-scoped `let T`/`let U` — window.T does not work.
+  var _fetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    try {
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      init = init || {};
+      if (url.indexOf('/api/auth/login') !== -1 && init.method && String(init.method).toUpperCase() === 'POST') {
+        var body = init.body;
+        if (typeof body === 'string') {
+          try {
+            var j = JSON.parse(body);
+            if (!j.subscription_token) {
+              var tok = '';
+              try {
+                tok = localStorage.getItem('sub_tk') || localStorage.getItem('cafirmhub_sub_token') || '';
+              } catch (e) {}
+              if (tok) {
+                j.subscription_token = tok;
+                init = Object.assign({}, init, { body: JSON.stringify(j) });
+              }
+            }
+          } catch (e) {}
         }
       }
-    };
-  }
+      if ((url === '/api/superadmin/firms' || /\/api\/superadmin\/firms\/\d+$/.test(url)) &&
+          init.method && /POST|PUT/i.test(String(init.method))) {
+        var body2 = init.body;
+        if (typeof body2 === 'string') {
+          try {
+            var j2 = JSON.parse(body2);
+            var em = (document.getElementById('firm-owner-email') || {}).value || '';
+            if (em) {
+              j2.owner_email = em.trim().toLowerCase();
+              init = Object.assign({}, init, { body: JSON.stringify(j2) });
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+    return _fetch(input, init);
+  };
 
   function enhanceSuperAdmin() {
     var mo = document.getElementById('firm-mo');
@@ -162,48 +143,15 @@
     if (window.__cafhSaveFirmPatched) return;
     if (typeof window.saveFirm !== 'function') return;
     window.__cafhSaveFirmPatched = true;
+    var origSave = window.saveFirm;
     window.saveFirm = async function () {
-      var nameEl = document.getElementById('f-name');
-      var name = nameEl ? nameEl.value.trim() : '';
-      if (!name) { if (typeof toast === 'function') toast('Firm name is required', 'err'); return; }
       var emailEl = document.getElementById('firm-owner-email');
       var email = emailEl ? emailEl.value.trim().toLowerCase() : '';
-      if (!email) {
+      if (!window.EDIT_FIRM_ID && !email) {
         if (typeof toast === 'function') toast('Subscription email is required', 'err');
         return;
       }
-      var body = {
-        name: name,
-        reg_no: ((document.getElementById('f-reg') || {}).value || '').trim(),
-        expires_at: (document.getElementById('f-exp') || {}).value || null,
-        owner_email: email
-      };
-      try {
-        if (window.EDIT_FIRM_ID) {
-          await window.saFetch('/api/superadmin/firms/' + window.EDIT_FIRM_ID, {
-            method: 'PUT', body: JSON.stringify(body)
-          });
-          if (typeof toast === 'function') toast('Firm updated');
-          if (typeof closeMo === 'function') closeMo('firm-mo');
-        } else {
-          var res = await window.saFetch('/api/superadmin/firms', {
-            method: 'POST', body: JSON.stringify(body)
-          });
-          var subWrap = document.getElementById('f-subid-wrap');
-          var subVal = document.getElementById('f-subid-val');
-          if (subVal && res.sub_id) subVal.textContent = res.sub_id;
-          if (subWrap) subWrap.style.display = 'block';
-          var btn = document.getElementById('firm-save-btn');
-          if (btn) {
-            btn.textContent = 'Done';
-            btn.onclick = function () { if (typeof closeMo === 'function') closeMo('firm-mo'); };
-          }
-          if (typeof toast === 'function') toast('Firm created! Email gate: ' + (res.owner_email || email));
-        }
-        if (typeof loadFirms === 'function') loadFirms();
-      } catch (e) {
-        if (typeof toast === 'function') toast(e.message || 'Request failed', 'err');
-      }
+      return origSave.apply(this, arguments);
     };
   }
 
@@ -211,14 +159,10 @@
     enhanceGate();
     enhanceSuperAdmin();
     patchSaveFirm();
-    patchDoLogin();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
   setTimeout(enhanceGate, 50);
   setTimeout(enhanceGate, 400);
   setTimeout(enhanceSuperAdmin, 200);
   setTimeout(patchSaveFirm, 300);
-  setTimeout(patchSaveFirm, 1000);
-  setTimeout(patchDoLogin, 300);
-  setTimeout(patchDoLogin, 1000);
 })();
