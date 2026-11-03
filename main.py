@@ -1,7 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
 Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker,
-email-based subscription gate.
+email-based subscription gate + firm-scoped login.
 """
 import urllib.request
 from pathlib import Path
@@ -135,10 +135,15 @@ try:
     register_subscription_email_enhance(app, {
         "qry": _ns["qry"],
         "execute": _ns["execute"],
+        "qry_id": _ns.get("qry_id"),
         "superadmin_required": _ns.get("superadmin_required"),
         "SECRET_KEY": _ns.get("SECRET_KEY"),
         "login_required": _ns["login_required"],
         "require_role": _ns["require_role"],
+        "check_pw": _ns.get("check_pw"),
+        "make_token": _ns.get("make_token"),
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+        "seed_all_templates_to_firm": _ns.get("_seed_all_templates_to_firm"),
     })
 except Exception as _sub_email_err:
     print("[CA FirmHub] Subscription email enhance not loaded:", _sub_email_err)
