@@ -6,7 +6,7 @@ Gate uses owner email instead of requiring Subscription ID every time.
 Email unlocks the firm only; username/password stay firm-scoped.
 """
 from datetime import datetime, timedelta
-from flask import request, jsonify, g
+from flask import request, jsonify
 import jwt
 import os
 import re
@@ -97,7 +97,6 @@ def register_subscription_email_enhance(app, helpers):
             return f"Subscription expired on {d}"
         return None
 
-    @app.route("/api/subscription/verify", methods=["POST"])
     def subscription_verify_email():
         """Accept email (preferred) or subscription_id. Time-based expiry unchanged."""
         d = request.get_json(silent=True) or {}
@@ -135,7 +134,6 @@ def register_subscription_email_enhance(app, helpers):
             "expires_at": str(firm["expires_at"])[:10] if firm.get("expires_at") else None,
         })
 
-    @app.route("/api/subscription/check", methods=["POST"])
     def subscription_check_email():
         d = request.get_json(silent=True) or {}
         token = str(d.get("subscription_token") or "").strip()
@@ -159,11 +157,14 @@ def register_subscription_email_enhance(app, helpers):
         except Exception:
             return jsonify({"valid": False})
 
+    # Override existing endpoints so email path is used (base main registered these first)
+    app.view_functions["subscription_verify"] = subscription_verify_email
+    app.view_functions["subscription_check"] = subscription_check_email
+
     if superadmin_required:
         _orig_create = app.view_functions.get("sa_create_firm")
         _orig_update = app.view_functions.get("sa_update_firm")
 
-        @superadmin_required
         def sa_create_firm_email():
             d = request.get_json(silent=True) or {}
             email = _norm_email(d.get("owner_email") or d.get("email") or "")
@@ -193,7 +194,6 @@ def register_subscription_email_enhance(app, helpers):
                 return resp
             return jsonify({"detail": "Create firm unavailable"}), 500
 
-        @superadmin_required
         def sa_update_firm_email(fid):
             d = request.get_json(silent=True) or {}
             if "owner_email" in d or "email" in d:
@@ -217,7 +217,7 @@ def register_subscription_email_enhance(app, helpers):
                 return _orig_update(fid)
             return jsonify(qry("SELECT * FROM firms WHERE id=%s", (fid,), one=True))
 
-        app.view_functions["sa_create_firm"] = sa_create_firm_email
-        app.view_functions["sa_update_firm"] = sa_update_firm_email
+        app.view_functions["sa_create_firm"] = superadmin_required(sa_create_firm_email)
+        app.view_functions["sa_update_firm"] = superadmin_required(sa_update_firm_email)
 
     print("[sub-email] Email-based subscription gate registered")
