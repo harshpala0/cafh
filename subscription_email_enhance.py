@@ -10,6 +10,7 @@ from flask import request, jsonify
 import jwt
 import os
 import re
+import uuid
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -17,6 +18,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 def register_subscription_email_enhance(app, helpers):
     qry = helpers["qry"]
     execute = helpers["execute"]
+    qry_id = helpers.get("qry_id")
     superadmin_required = helpers.get("superadmin_required")
     SECRET_KEY = helpers.get("SECRET_KEY") or os.environ.get("SECRET_KEY", "cafirmhub-secret")
 
@@ -49,6 +51,21 @@ def register_subscription_email_enhance(app, helpers):
 
     def _norm_email(e):
         return (e or "").strip().lower()
+
+    def _parse_date(val):
+        if not val:
+            return None
+        s = str(val).strip()
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(s[:10], fmt).date().isoformat()
+            except Exception:
+                continue
+        if hasattr(val, "isoformat"):
+            return val.isoformat()
+        return s[:10]
 
     def _firm_from_email(email):
         em = _norm_email(email)
@@ -98,7 +115,6 @@ def register_subscription_email_enhance(app, helpers):
         return None
 
     def subscription_verify_email():
-        """Accept email (preferred) or subscription_id. Time-based expiry unchanged."""
         d = request.get_json(silent=True) or {}
         email = _norm_email(d.get("email") or d.get("owner_email") or "")
         sub_id = str(d.get("subscription_id") or d.get("sub_id") or "").strip()
@@ -157,67 +173,137 @@ def register_subscription_email_enhance(app, helpers):
         except Exception:
             return jsonify({"valid": False})
 
-    # Override existing endpoints so email path is used (base main registered these first)
     app.view_functions["subscription_verify"] = subscription_verify_email
     app.view_functions["subscription_check"] = subscription_check_email
 
-    if superadmin_required:
-        _orig_create = app.view_functions.get("sa_create_firm")
-        _orig_update = app.view_functions.get("sa_update_firm")
+    def _create_firm_core():
+        _ensure()
+        d = request.get_json(silent=True) or {}
+        name = (d.get("name") or "").strip()
+        reg_no = (d.get("reg_no") or "").strip()
+        expires = _parse_date(d.get("expires_at"))
+        email = _norm_email(d.get("owner_email") or d.get("email") or "")
 
-        def sa_create_firm_email():
-            d = request.get_json(silent=True) or {}
-            email = _norm_email(d.get("owner_email") or d.get("email") or "")
+        if not name:
+            return jsonify({"detail": "Firm name required"}), 400
+        if email and not EMAIL_RE.match(email):
+            return jsonify({"detail": "Invalid subscription email"}), 400
+        if email:
+            exists = qry(
+                "SELECT id, name FROM firms WHERE LOWER(TRIM(owner_email))=%s",
+                (email,), one=True,
+            )
+            if exists:
+                return jsonify({
+                    "detail": f"Email already linked to firm '{exists.get('name')}' (id {exists['id']}). "
+                              f"Use a different email or edit that firm."
+                }), 400
+
+        sub_id = "SUB-" + uuid.uuid4().hex[:12].upper()
+        fid = None
+        try:
+            if qry_id:
+                fid = qry_id(
+                    "INSERT INTO firms (name,reg_no,sub_id,is_active,expires_at,owner_email) "
+                    "VALUES (%s,%s,%s,TRUE,%s,%s)",
+                    (name, reg_no, sub_id, expires, email or None),
+                )
+            else:
+                execute(
+                    "INSERT INTO firms (name,reg_no,sub_id,is_active,expires_at,owner_email) "
+                    "VALUES (%s,%s,%s,TRUE,%s,%s)",
+                    (name, reg_no, sub_id, expires, email or None),
+                )
+                row = qry("SELECT id FROM firms WHERE sub_id=%s", (sub_id,), one=True)
+                fid = row["id"] if row else None
+        except Exception as e:
+            msg = str(e)
+            if "owner_email" in msg.lower():
+                try:
+                    if qry_id:
+                        fid = qry_id(
+                            "INSERT INTO firms (name,reg_no,sub_id,is_active,expires_at) "
+                            "VALUES (%s,%s,%s,TRUE,%s)",
+                            (name, reg_no, sub_id, expires),
+                        )
+                    else:
+                        execute(
+                            "INSERT INTO firms (name,reg_no,sub_id,is_active,expires_at) "
+                            "VALUES (%s,%s,%s,TRUE,%s)",
+                            (name, reg_no, sub_id, expires),
+                        )
+                        row = qry("SELECT id FROM firms WHERE sub_id=%s", (sub_id,), one=True)
+                        fid = row["id"] if row else None
+                    if fid and email:
+                        try:
+                            execute("UPDATE firms SET owner_email=%s WHERE id=%s", (email, fid))
+                        except Exception as e2:
+                            return jsonify({"detail": f"Firm created but email not saved: {e2}"}), 500
+                except Exception as e3:
+                    return jsonify({"detail": f"Could not create firm: {e3}"}), 500
+            else:
+                return jsonify({"detail": f"Could not create firm: {msg}"}), 500
+
+        programs_seeded = 0
+        try:
+            seed = helpers.get("seed_all_templates_to_firm")
+            if seed and fid:
+                programs_seeded = seed(fid) or 0
+        except Exception as e:
+            print("[sub-email] seed:", e)
+
+        return jsonify({
+            "id": fid,
+            "name": name,
+            "sub_id": sub_id,
+            "reg_no": reg_no,
+            "expires_at": expires,
+            "owner_email": email or "",
+            "programs_seeded": programs_seeded,
+        }), 201
+
+    def _update_firm_core(fid):
+        _ensure()
+        d = request.get_json(silent=True) or {}
+        fields, vals = [], []
+        for col in ["name", "reg_no", "is_active"]:
+            if col in d:
+                fields.append(f"{col}=%s")
+                vals.append(d[col])
+        if "expires_at" in d:
+            fields.append("expires_at=%s")
+            vals.append(_parse_date(d.get("expires_at")))
+        if "owner_email" in d or "email" in d:
+            email = _norm_email(d.get("owner_email") if "owner_email" in d else d.get("email"))
             if email and not EMAIL_RE.match(email):
-                return jsonify({"detail": "Invalid owner email"}), 400
+                return jsonify({"detail": "Invalid subscription email"}), 400
             if email:
                 exists = qry(
-                    "SELECT id, name FROM firms WHERE LOWER(TRIM(owner_email))=%s",
-                    (email,), one=True,
+                    "SELECT id, name FROM firms WHERE LOWER(TRIM(owner_email))=%s AND id<>%s",
+                    (email, fid), one=True,
                 )
                 if exists:
                     return jsonify({
-                        "detail": f"Email already linked to firm '{exists.get('name')}' (id {exists['id']})"
+                        "detail": f"Email already linked to firm '{exists.get('name')}'"
                     }), 400
-            if _orig_create:
-                resp = _orig_create()
-                if email and hasattr(resp, "status_code") and resp.status_code in (200, 201):
-                    try:
-                        data = resp.get_json() or {}
-                        fid = data.get("id")
-                        if fid:
-                            execute("UPDATE firms SET owner_email=%s WHERE id=%s", (email, fid))
-                            data["owner_email"] = email
-                            return jsonify(data), resp.status_code
-                    except Exception as e:
-                        print("[sub-email] attach email:", e)
-                return resp
-            return jsonify({"detail": "Create firm unavailable"}), 500
+            fields.append("owner_email=%s")
+            vals.append(email or None)
+        if not fields:
+            return jsonify({"detail": "Nothing to update"}), 400
+        vals.append(fid)
+        try:
+            execute(f"UPDATE firms SET {','.join(fields)} WHERE id=%s", vals)
+        except Exception as e:
+            return jsonify({"detail": f"Update failed: {e}"}), 500
+        row = qry("SELECT * FROM firms WHERE id=%s", (fid,), one=True)
+        return jsonify(row)
 
-        def sa_update_firm_email(fid):
-            d = request.get_json(silent=True) or {}
-            if "owner_email" in d or "email" in d:
-                email = _norm_email(d.get("owner_email") if "owner_email" in d else d.get("email"))
-                if email and not EMAIL_RE.match(email):
-                    return jsonify({"detail": "Invalid owner email"}), 400
-                if email:
-                    exists = qry(
-                        "SELECT id, name FROM firms WHERE LOWER(TRIM(owner_email))=%s AND id<>%s",
-                        (email, fid), one=True,
-                    )
-                    if exists:
-                        return jsonify({
-                            "detail": f"Email already linked to firm '{exists.get('name')}'"
-                        }), 400
-                try:
-                    execute("UPDATE firms SET owner_email=%s WHERE id=%s", (email or None, fid))
-                except Exception as e:
-                    return jsonify({"detail": str(e)}), 500
-            if _orig_update:
-                return _orig_update(fid)
-            return jsonify(qry("SELECT * FROM firms WHERE id=%s", (fid,), one=True))
-
-        app.view_functions["sa_create_firm"] = superadmin_required(sa_create_firm_email)
-        app.view_functions["sa_update_firm"] = superadmin_required(sa_update_firm_email)
+    if superadmin_required:
+        app.view_functions["sa_create_firm"] = superadmin_required(_create_firm_core)
+        app.view_functions["sa_update_firm"] = superadmin_required(_update_firm_core)
+    else:
+        print("[sub-email] WARNING: superadmin_required not found")
+        app.view_functions["sa_create_firm"] = _create_firm_core
+        app.view_functions["sa_update_firm"] = _update_firm_core
 
     print("[sub-email] Email-based subscription gate registered")

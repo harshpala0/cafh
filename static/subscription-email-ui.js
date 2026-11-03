@@ -86,49 +86,77 @@
   function enhanceSuperAdmin() {
     var mo = document.getElementById('firm-mo');
     if (!mo || document.getElementById('firm-owner-email')) return;
-    var body = mo.querySelector('.mb, .modal-body, form') || mo;
-    var exp = mo.querySelector('#firm-expires, input[type="date"]');
+    var body = mo.querySelector('.md-b, .mb, .modal-body, form') || mo;
     var fg = document.createElement('div');
     fg.className = 'fg';
+    fg.style.marginTop = '12px';
     fg.innerHTML =
       '<label>Subscription email *</label>' +
       '<input type="email" id="firm-owner-email" placeholder="admin@yourfirm.com" style="width:100%">' +
       '<p style="font-size:11px;color:#718096;margin-top:4px">Users enter this email on the subscription gate to reach your firm login. Must be unique across firms.</p>';
-    if (exp && exp.parentNode && exp.parentNode.parentNode) {
-      exp.parentNode.parentNode.insertBefore(fg, exp.parentNode.nextSibling);
-    } else {
-      body.appendChild(fg);
-    }
+    body.appendChild(fg);
   }
 
-  var _fetch = window.fetch.bind(window);
-  window.fetch = function (input, init) {
-    try {
-      var url = typeof input === 'string' ? input : (input && input.url) || '';
-      init = init || {};
-      if (url.indexOf('/api/superadmin/firms') !== -1 && init.method && /POST|PUT/i.test(init.method)) {
-        var body = init.body;
-        if (typeof body === 'string') {
-          try {
-            var j = JSON.parse(body);
-            var em = (document.getElementById('firm-owner-email') || {}).value || '';
-            if (em) {
-              j.owner_email = em.trim().toLowerCase();
-              init = Object.assign({}, init, { body: JSON.stringify(j) });
-            }
-          } catch (e) {}
-        }
+  function patchSaveFirm() {
+    if (window.__cafhSaveFirmPatched) return;
+    if (typeof window.saveFirm !== 'function') return;
+    window.__cafhSaveFirmPatched = true;
+    window.saveFirm = async function () {
+      var nameEl = document.getElementById('f-name');
+      var name = nameEl ? nameEl.value.trim() : '';
+      if (!name) { if (typeof toast === 'function') toast('Firm name is required', 'err'); return; }
+      var emailEl = document.getElementById('firm-owner-email');
+      var email = emailEl ? emailEl.value.trim().toLowerCase() : '';
+      if (!email) {
+        if (typeof toast === 'function') toast('Subscription email is required', 'err');
+        return;
       }
-    } catch (e) {}
-    return _fetch(input, init);
-  };
+      var body = {
+        name: name,
+        reg_no: ((document.getElementById('f-reg') || {}).value || '').trim(),
+        expires_at: (document.getElementById('f-exp') || {}).value || null,
+        owner_email: email
+      };
+      try {
+        if (window.EDIT_FIRM_ID) {
+          await window.saFetch('/api/superadmin/firms/' + window.EDIT_FIRM_ID, {
+            method: 'PUT', body: JSON.stringify(body)
+          });
+          if (typeof toast === 'function') toast('Firm updated');
+          if (typeof closeMo === 'function') closeMo('firm-mo');
+        } else {
+          var res = await window.saFetch('/api/superadmin/firms', {
+            method: 'POST', body: JSON.stringify(body)
+          });
+          var subWrap = document.getElementById('f-subid-wrap');
+          var subVal = document.getElementById('f-subid-val');
+          if (subVal && res.sub_id) subVal.textContent = res.sub_id;
+          if (subWrap) subWrap.style.display = 'block';
+          var btn = document.getElementById('firm-save-btn');
+          if (btn) {
+            btn.textContent = 'Done';
+            btn.onclick = function () { if (typeof closeMo === 'function') closeMo('firm-mo'); };
+          }
+          if (typeof toast === 'function') {
+            toast('Firm created! Email gate: ' + (res.owner_email || email));
+          }
+        }
+        if (typeof loadFirms === 'function') loadFirms();
+      } catch (e) {
+        if (typeof toast === 'function') toast(e.message || 'Request failed', 'err');
+      }
+    };
+  }
 
   var obs = new MutationObserver(function () {
     enhanceGate();
     enhanceSuperAdmin();
+    patchSaveFirm();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
   setTimeout(enhanceGate, 50);
   setTimeout(enhanceGate, 400);
   setTimeout(enhanceSuperAdmin, 200);
+  setTimeout(patchSaveFirm, 300);
+  setTimeout(patchSaveFirm, 1000);
 })();
