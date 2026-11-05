@@ -87,15 +87,18 @@
     });
     var pt = document.getElementById('pt');
     var pa = document.getElementById('pa');
+    var pb = document.getElementById('pb');
     if (pt) pt.textContent = 'Mail';
-    if (pa) pa.innerHTML = '<div style="padding:24px;color:var(--text2)">Loading mail…</div>';
+    if (pa) pa.innerHTML = '';
+    if (pb) pb.innerHTML = '<div style="padding:24px;color:var(--text2)">Loading mail…</div>';
     showMail().catch(function (e) {
-      if (pa) {
-        pa.innerHTML =
+      var target = document.getElementById('pb') || document.getElementById('pa');
+      if (target) {
+        target.innerHTML =
           '<div style="padding:24px">' +
           '<div style="color:var(--err);font-weight:600;margin-bottom:8px">Could not open Mail</div>' +
           '<div style="color:var(--text2);font-size:13px">' + esc(e.message || String(e)) + '</div>' +
-          '<p style="margin-top:12px;font-size:12.5px;color:var(--text3)">If this persists, confirm deploy includes mail_enhance.py and hard-refresh the page.</p>' +
+          '<p style="margin-top:12px;font-size:12.5px;color:var(--text3)">If this persists, hard-refresh after deploy.</p>' +
           '</div>';
       }
       toast(e.message || 'Mail failed', 'err');
@@ -117,15 +120,15 @@
   }
 
   async function showMail() {
-    var pa = document.getElementById('pa');
-    if (!pa) throw new Error('Content panel not found');
+    var pb = document.getElementById('pb');
+    if (!pb) throw new Error('Content panel (#pb) not found');
 
     var data = await api('/api/mail/recipients');
     var settings = data.settings || {};
     var clients = data.clients || [];
     var smtpOk = !!settings.smtp_configured;
 
-    pa.innerHTML =
+    pb.innerHTML =
       '<div style="padding:16px 20px;max-width:960px">' +
       '<div class="card" style="margin-bottom:16px">' +
       '<div class="card-h">Firm mail identity (Admin)</div>' +
