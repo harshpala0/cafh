@@ -2,9 +2,10 @@
 
 Admin stores from-name / from-email for the firm.
 Staff select clients; mail goes to contact_email on client records.
-SMTP transport uses env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_TLS.
+SMTP: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_TLS, SMTP_SSL.
 """
 import os
+import socket
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -19,7 +20,6 @@ def register_mail_enhance(app, helpers):
     log_action = helpers.get("log_action", lambda *a, **k: None)
 
     def _ensure():
-        """Create firm_mail_settings if missing. Safe to call per-request."""
         try:
             execute(
                 "CREATE TABLE IF NOT EXISTS firm_mail_settings ("
@@ -86,14 +86,15 @@ def register_mail_enhance(app, helpers):
         }
 
     def _send(to_list, subject, body, from_name="", from_email="", reply_to=""):
-        host = os.environ.get("SMTP_HOST", "")
-        port = int(os.environ.get("SMTP_PORT", "587"))
-        user = os.environ.get("SMTP_USER", "")
-        password = os.environ.get("SMTP_PASS", "")
-        env_from = os.environ.get("SMTP_FROM") or user
+        host = (os.environ.get("SMTP_HOST") or "").strip()
+        port = int(os.environ.get("SMTP_PORT") or "587")
+        user = (os.environ.get("SMTP_USER") or "").strip()
+        password = (os.environ.get("SMTP_PASS") or "").strip()
+        env_from = (os.environ.get("SMTP_FROM") or user or "").strip()
+        use_ssl = (os.environ.get("SMTP_SSL") or "").strip() in ("1", "true", "True", "yes")
         use_tls = os.environ.get("SMTP_TLS", "1") != "0"
         if not host or not env_from:
-            return False, "SMTP not configured on server (SMTP_HOST / SMTP_FROM)"
+            return False, "SMTP not configured on server (set SMTP_HOST, SMTP_FROM, SMTP_USER, SMTP_PASS)"
         if isinstance(to_list, str):
             to_list = [a.strip() for a in to_list.split(",") if a.strip()]
         to_list = [a for a in to_list if a and "@" in a]
@@ -109,17 +110,42 @@ def register_mail_enhance(app, helpers):
         elif from_email and "@" in from_email:
             msg["Reply-To"] = from_email
         msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        def _ipv4_host(h, p):
+            try:
+                infos = socket.getaddrinfo(h, p, socket.AF_INET, socket.SOCK_STREAM)
+                if infos:
+                    return infos[0][4][0]
+            except Exception as ex:
+                print("[mail] ipv4 resolve:", ex)
+            return h
+
+        target = _ipv4_host(host, port)
         try:
-            if use_tls:
-                server = smtplib.SMTP(host, port, timeout=45)
-                server.starttls()
+            if use_ssl or port == 465:
+                context = None
+                try:
+                    import ssl as _ssl
+                    context = _ssl.create_default_context()
+                except Exception:
+                    context = None
+                server = smtplib.SMTP_SSL(target, port, timeout=45, context=context)
             else:
-                server = smtplib.SMTP(host, port, timeout=45)
+                server = smtplib.SMTP(target, port, timeout=45)
+                if use_tls:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
             if user and password:
                 server.login(user, password)
             server.sendmail(env_from, to_list, msg.as_string())
             server.quit()
             return True, "sent"
+        except OSError as e:
+            return False, (
+                f"{e}. Check SMTP_* env vars. On Render try SMTP_PORT=465 and SMTP_SSL=1, "
+                "or use SendGrid/Resend SMTP. Ensure Gmail App Password (not normal password)."
+            )
         except Exception as e:
             return False, str(e)
 
