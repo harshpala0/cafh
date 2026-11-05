@@ -113,6 +113,8 @@ def register_mail_enhance(app, helpers):
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "User-Agent": "CA-FirmHub/1.0 (Harsh Pala)",
+                "Accept": "application/json",
             },
             method="POST",
         )
@@ -125,10 +127,15 @@ def register_mail_enhance(app, helpers):
                     out = {}
                 if resp.status in (200, 201):
                     return True, out.get("id") or "sent"
-                return False, raw[:300]
+                return False, raw[:400]
         except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="replace")[:400]
-            return False, f"Resend HTTP {e.code}: {err_body}"
+            err_body = e.read().decode("utf-8", errors="replace")[:500]
+            try:
+                ej = json.loads(err_body)
+                msg = ej.get("message") or err_body
+            except Exception:
+                msg = err_body
+            return False, f"Resend HTTP {e.code}: {msg}"
         except Exception as e:
             return False, str(e)
 
