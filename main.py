@@ -1,7 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
 Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker,
-email-based subscription gate + firm-scoped login.
+email-based subscription gate + firm-scoped login + Lovable-inspired theme.
 """
 import urllib.request
 from pathlib import Path
@@ -61,17 +61,19 @@ app = _ns["app"]
 from flask import Response as _Response
 
 _MOBILE_HEAD = """
-<meta name="theme-color" content="#003366">
+<meta name="theme-color" content="#0B1F3A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CA FirmHub">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<link rel="stylesheet" href="/static/firmhub-theme.css">
 """
 
 _MOBILE_BODY = (
     '<script src="/static/mobile.js" defer></script>\n'
+    '<script src="/static/firmhub-theme.js" defer></script>\n'
     '<script src="/static/subscription-email-ui.js" defer></script>\n'
     '<script src="/static/staff-ui.js" defer></script>\n'
     '<script src="/static/compliance-ui.js" defer></script>\n'
@@ -88,12 +90,16 @@ def _serve_index_with_mobile():
     try:
         path = Path(__file__).resolve().parent / "static" / "index.html"
         html = path.read_text(encoding="utf-8")
+        if "firmhub-theme.css" not in html and "</head>" in html:
+            html = html.replace("</head>", '<link rel="stylesheet" href="/static/firmhub-theme.css">\n</head>', 1)
         if "manifest.webmanifest" not in html:
             html = html.replace("</head>", _MOBILE_HEAD + "</head>", 1)
         if "staff-ui.js" not in html and "library-ui.js" not in html:
             idx = html.rfind("</body>")
             if idx != -1:
                 html = html[:idx] + _MOBILE_BODY + html[idx:]
+        if "firmhub-theme.js" not in html and "</body>" in html:
+            html = html.replace("</body>", '<script src="/static/firmhub-theme.js" defer></script>\n</body>', 1)
         if "subscription-email-ui.js" not in html and "</body>" in html:
             html = html.replace("</body>", '<script src="/static/subscription-email-ui.js" defer></script>\n</body>', 1)
         if "mrl-ui.js" not in html and "</body>" in html:
@@ -273,6 +279,8 @@ try:
         path = Path(__file__).resolve().parent / "static" / "superadmin.html"
         html = path.read_text(encoding="utf-8")
         tag = (
+            '<link rel="stylesheet" href="/static/firmhub-theme.css">\n'
+            '<script src="/static/firmhub-theme.js" defer></script>\n'
             '<script src="/static/subscription-email-ui.js" defer></script>\n'
             '<script src="/static/superadmin-library.js" defer></script>\n'
         )
@@ -280,6 +288,8 @@ try:
             html = html.replace("</body>", tag + "</body>", 1)
         elif "subscription-email-ui.js" not in html and "</body>" in html:
             html = html.replace("</body>", '<script src="/static/subscription-email-ui.js" defer></script>\n</body>', 1)
+        if "firmhub-theme.css" not in html and "</head>" in html:
+            html = html.replace("</head>", '<link rel="stylesheet" href="/static/firmhub-theme.css">\n</head>', 1)
         return _Response(html, mimetype="text/html")
     app.view_functions["superadmin_page"] = _sa_with_library
 except Exception as _sa_lib_err:
