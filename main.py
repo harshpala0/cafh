@@ -1,7 +1,7 @@
 """
 CA FirmHub — self-healing bootstrap.
 Injects mobile/PWA, Portal, Compliance, Ops, Notify, Cron, Verify, Library, Import Packs, MRL Maker,
-email-based subscription gate + firm-scoped login + Lovable-inspired theme.
+email-based subscription gate + firm-scoped login + Lovable-inspired theme + client mail.
 """
 import urllib.request
 from pathlib import Path
@@ -82,6 +82,7 @@ _MOBILE_BODY = (
     '<script src="/static/verify-ui.js" defer></script>\n'
     '<script src="/static/library-ui.js" defer></script>\n'
     '<script src="/static/mrl-ui.js" defer></script>\n'
+    '<script src="/static/mail-ui.js" defer></script>\n'
     '<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js").catch(function(){}); }</script>\n'
 )
 
@@ -104,6 +105,8 @@ def _serve_index_with_mobile():
             html = html.replace("</body>", '<script src="/static/subscription-email-ui.js" defer></script>\n</body>', 1)
         if "mrl-ui.js" not in html and "</body>" in html:
             html = html.replace("</body>", '<script src="/static/mrl-ui.js" defer></script>\n</body>', 1)
+        if "mail-ui.js" not in html and "</body>" in html:
+            html = html.replace("</body>", '<script src="/static/mail-ui.js" defer></script>\n</body>', 1)
         return _Response(html, mimetype="text/html")
     except Exception as e:
         return _Response(f"Error loading app: {e}", status=500, mimetype="text/plain")
@@ -272,6 +275,19 @@ try:
     })
 except Exception as _lib_err:
     print("[CA FirmHub] Library enhance not loaded:", _lib_err)
+
+
+try:
+    from mail_enhance import register_mail_enhance
+    register_mail_enhance(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _mail_err:
+    print("[CA FirmHub] Mail enhance not loaded:", _mail_err)
 
 
 try:
