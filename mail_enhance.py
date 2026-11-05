@@ -19,32 +19,45 @@ def register_mail_enhance(app, helpers):
     log_action = helpers.get("log_action", lambda *a, **k: None)
 
     def _ensure():
+        """Create firm_mail_settings if missing. Safe to call per-request."""
         try:
             execute(
-                """
-                CREATE TABLE IF NOT EXISTS firm_mail_settings (
-                    firm_id INTEGER PRIMARY KEY,
-                    from_name TEXT,
-                    from_email TEXT,
-                    reply_to TEXT,
-                    signature TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+                "CREATE TABLE IF NOT EXISTS firm_mail_settings ("
+                "firm_id INTEGER PRIMARY KEY, "
+                "from_name TEXT, "
+                "from_email TEXT, "
+                "reply_to TEXT, "
+                "signature TEXT, "
+                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
             )
+            return True
         except Exception as e:
             print("[mail] ensure:", e)
-
-    try:
-        _ensure()
-    except Exception as e:
-        print("[mail] ensure fail:", e)
+            try:
+                exists = qry(
+                    "SELECT 1 AS x FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name='firm_mail_settings'",
+                    one=True,
+                )
+                if not exists:
+                    execute(
+                        "CREATE TABLE firm_mail_settings ("
+                        "firm_id INTEGER PRIMARY KEY, from_name TEXT, from_email TEXT, "
+                        "reply_to TEXT, signature TEXT, "
+                        "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                    )
+                return True
+            except Exception as e2:
+                print("[mail] ensure fallback:", e2)
+                return False
 
     def staff_ok():
-        return g.user.get("role") in ("Admin", "TeamLeader", "Member", "SuperAdmin")
+        role = (g.user or {}).get("role") or ""
+        return role in ("Admin", "TeamLeader", "Member", "SuperAdmin")
 
     def admin_ok():
-        return g.user.get("role") in ("Admin", "SuperAdmin")
+        role = (g.user or {}).get("role") or ""
+        return role in ("Admin", "SuperAdmin")
 
     def _smtp_configured():
         return bool(os.environ.get("SMTP_HOST") and (
@@ -52,10 +65,18 @@ def register_mail_enhance(app, helpers):
         ))
 
     def _get_settings(firm_id):
-        row = qry(
-            "SELECT * FROM firm_mail_settings WHERE firm_id=%s",
-            (firm_id,), one=True,
-        ) or {}
+        _ensure()
+        row = None
+        try:
+            row = qry(
+                "SELECT * FROM firm_mail_settings WHERE firm_id=%s",
+                (firm_id,), one=True,
+            )
+        except Exception as e:
+            print("[mail] get_settings:", e)
+            row = None
+        if not row or not isinstance(row, dict):
+            row = {}
         return {
             "from_name": row.get("from_name") or "",
             "from_email": row.get("from_email") or "",
@@ -78,9 +99,7 @@ def register_mail_enhance(app, helpers):
         to_list = [a for a in to_list if a and "@" in a]
         if not to_list:
             return False, "No valid recipient addresses"
-        display_from = env_from
-        if from_name:
-            display_from = f"{from_name} <{env_from}>"
+        display_from = f"{from_name} <{env_from}>" if from_name else env_from
         msg = MIMEMultipart()
         msg["From"] = display_from
         msg["To"] = ", ".join(to_list)
@@ -107,149 +126,189 @@ def register_mail_enhance(app, helpers):
     @app.route("/api/mail/settings")
     @login_required
     def mail_settings_get():
-        if not staff_ok():
-            return jsonify({"detail": "Staff only"}), 403
-        return jsonify(_get_settings(g.firm_id))
+        try:
+            if not staff_ok():
+                return jsonify({"detail": "Staff only"}), 403
+            return jsonify(_get_settings(g.firm_id))
+        except Exception as e:
+            print("[mail] settings_get:", e)
+            return jsonify({
+                "from_name": "", "from_email": "", "reply_to": "", "signature": "",
+                "smtp_configured": _smtp_configured(),
+            })
 
     @app.route("/api/mail/settings", methods=["PUT", "POST"])
     @login_required
     def mail_settings_save():
-        if not admin_ok():
-            return jsonify({"detail": "Admin only"}), 403
-        d = request.get_json(silent=True) or {}
-        from_name = (d.get("from_name") or "").strip()
-        from_email = (d.get("from_email") or "").strip().lower()
-        reply_to = (d.get("reply_to") or "").strip().lower()
-        signature = (d.get("signature") or "").strip()
-        if from_email and "@" not in from_email:
-            return jsonify({"detail": "Invalid from email"}), 400
-        if reply_to and "@" not in reply_to:
-            return jsonify({"detail": "Invalid reply-to email"}), 400
-        exists = qry(
-            "SELECT firm_id FROM firm_mail_settings WHERE firm_id=%s",
-            (g.firm_id,), one=True,
-        )
-        if exists:
-            execute(
-                "UPDATE firm_mail_settings SET from_name=%s, from_email=%s, reply_to=%s, "
-                "signature=%s, updated_at=CURRENT_TIMESTAMP WHERE firm_id=%s",
-                (from_name, from_email or None, reply_to or None, signature or None, g.firm_id),
-            )
-        else:
-            execute(
-                "INSERT INTO firm_mail_settings (firm_id, from_name, from_email, reply_to, signature) "
-                "VALUES (%s,%s,%s,%s,%s)",
-                (g.firm_id, from_name, from_email or None, reply_to or None, signature or None),
-            )
         try:
-            log_action(g.firm_id, g.user["id"], "MAIL_SETTINGS_UPDATE")
-        except Exception:
-            pass
-        return jsonify(_get_settings(g.firm_id))
+            if not admin_ok():
+                return jsonify({"detail": "Admin only"}), 403
+            _ensure()
+            d = request.get_json(silent=True) or {}
+            from_name = (d.get("from_name") or "").strip()
+            from_email = (d.get("from_email") or "").strip().lower()
+            reply_to = (d.get("reply_to") or "").strip().lower()
+            signature = (d.get("signature") or "").strip()
+            if from_email and "@" not in from_email:
+                return jsonify({"detail": "Invalid from email"}), 400
+            if reply_to and "@" not in reply_to:
+                return jsonify({"detail": "Invalid reply-to email"}), 400
+            exists = None
+            try:
+                exists = qry(
+                    "SELECT firm_id FROM firm_mail_settings WHERE firm_id=%s",
+                    (g.firm_id,), one=True,
+                )
+            except Exception:
+                _ensure()
+                exists = None
+            if exists:
+                execute(
+                    "UPDATE firm_mail_settings SET from_name=%s, from_email=%s, reply_to=%s, "
+                    "signature=%s, updated_at=CURRENT_TIMESTAMP WHERE firm_id=%s",
+                    (from_name, from_email or None, reply_to or None, signature or None, g.firm_id),
+                )
+            else:
+                execute(
+                    "INSERT INTO firm_mail_settings (firm_id, from_name, from_email, reply_to, signature) "
+                    "VALUES (%s,%s,%s,%s,%s)",
+                    (g.firm_id, from_name, from_email or None, reply_to or None, signature or None),
+                )
+            try:
+                log_action(g.firm_id, g.user["id"], "MAIL_SETTINGS_UPDATE")
+            except Exception:
+                pass
+            return jsonify(_get_settings(g.firm_id))
+        except Exception as e:
+            print("[mail] settings_save:", e)
+            return jsonify({"detail": f"Could not save: {e}"}), 500
 
     @app.route("/api/mail/recipients")
     @login_required
     def mail_recipients():
-        if not staff_ok():
-            return jsonify({"detail": "Staff only"}), 403
-        rows = qry(
-            "SELECT id, name, contact_person, contact_email, contact_phone, entity_type "
-            "FROM clients WHERE firm_id=%s AND is_active=TRUE ORDER BY name",
-            (g.firm_id,),
-        ) or []
-        out = []
-        for r in rows:
-            em = (r.get("contact_email") or "").strip()
-            out.append({
-                "id": r["id"],
-                "name": r["name"],
-                "contact_person": r.get("contact_person") or "",
-                "contact_email": em,
-                "contact_phone": r.get("contact_phone") or "",
-                "entity_type": r.get("entity_type") or "",
-                "has_email": bool(em and "@" in em),
+        try:
+            if not staff_ok():
+                return jsonify({"detail": "Staff only"}), 403
+            _ensure()
+            rows = []
+            try:
+                rows = qry(
+                    "SELECT id, name, contact_person, contact_email, contact_phone, entity_type "
+                    "FROM clients WHERE firm_id=%s AND COALESCE(is_active, TRUE)=TRUE ORDER BY name",
+                    (g.firm_id,),
+                ) or []
+            except Exception as e:
+                print("[mail] clients query:", e)
+                try:
+                    rows = qry(
+                        "SELECT id, name, contact_person, contact_email, contact_phone, entity_type "
+                        "FROM clients WHERE firm_id=%s ORDER BY name",
+                        (g.firm_id,),
+                    ) or []
+                except Exception as e2:
+                    print("[mail] clients query2:", e2)
+                    return jsonify({"detail": f"Could not load clients: {e2}"}), 500
+
+            out = []
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                em = (r.get("contact_email") or "").strip()
+                out.append({
+                    "id": r.get("id"),
+                    "name": r.get("name") or "",
+                    "contact_person": r.get("contact_person") or "",
+                    "contact_email": em,
+                    "contact_phone": r.get("contact_phone") or "",
+                    "entity_type": r.get("entity_type") or "",
+                    "has_email": bool(em and "@" in em),
+                })
+            return jsonify({
+                "clients": out,
+                "with_email": sum(1 for c in out if c["has_email"]),
+                "without_email": sum(1 for c in out if not c["has_email"]),
+                "settings": _get_settings(g.firm_id),
             })
-        return jsonify({
-            "clients": out,
-            "with_email": sum(1 for c in out if c["has_email"]),
-            "without_email": sum(1 for c in out if not c["has_email"]),
-            "settings": _get_settings(g.firm_id),
-        })
+        except Exception as e:
+            print("[mail] recipients:", e)
+            return jsonify({"detail": f"Mail recipients failed: {e}"}), 500
 
     @app.route("/api/mail/send", methods=["POST"])
     @login_required
     def mail_send():
-        if not staff_ok():
-            return jsonify({"detail": "Staff only"}), 403
-        d = request.get_json(silent=True) or {}
-        subject = (d.get("subject") or "").strip()
-        body = (d.get("body") or "").strip()
-        client_ids = d.get("client_ids") or []
-        if not subject:
-            return jsonify({"detail": "Subject is required"}), 400
-        if not body:
-            return jsonify({"detail": "Message body is required"}), 400
-        if not client_ids:
-            return jsonify({"detail": "Select at least one client"}), 400
         try:
-            client_ids = [int(x) for x in client_ids]
-        except Exception:
-            return jsonify({"detail": "Invalid client_ids"}), 400
+            if not staff_ok():
+                return jsonify({"detail": "Staff only"}), 403
+            d = request.get_json(silent=True) or {}
+            subject = (d.get("subject") or "").strip()
+            body = (d.get("body") or "").strip()
+            client_ids = d.get("client_ids") or []
+            if not subject:
+                return jsonify({"detail": "Subject is required"}), 400
+            if not body:
+                return jsonify({"detail": "Message body is required"}), 400
+            if not client_ids:
+                return jsonify({"detail": "Select at least one client"}), 400
+            try:
+                client_ids = [int(x) for x in client_ids]
+            except Exception:
+                return jsonify({"detail": "Invalid client_ids"}), 400
 
-        settings = _get_settings(g.firm_id)
-        if settings.get("signature"):
-            body = body.rstrip() + "\n\n" + settings["signature"]
+            settings = _get_settings(g.firm_id)
+            if settings.get("signature"):
+                body = body.rstrip() + "\n\n" + settings["signature"]
 
-        placeholders = ",".join(["%s"] * len(client_ids))
-        rows = qry(
-            f"SELECT id, name, contact_email FROM clients "
-            f"WHERE firm_id=%s AND id IN ({placeholders})",
-            tuple([g.firm_id] + client_ids),
-        ) or []
+            placeholders = ",".join(["%s"] * len(client_ids))
+            rows = qry(
+                f"SELECT id, name, contact_email FROM clients "
+                f"WHERE firm_id=%s AND id IN ({placeholders})",
+                tuple([g.firm_id] + client_ids),
+            ) or []
 
-        sent, skipped, errors = [], [], []
-        for r in rows:
-            em = (r.get("contact_email") or "").strip()
-            if not em or "@" not in em:
-                skipped.append({"id": r["id"], "name": r["name"], "reason": "No contact email"})
-                continue
-            text = body.replace("{{client_name}}", r["name"] or "")
-            text = text.replace("{{name}}", r["name"] or "")
-            ok, info = _send(
-                [em],
-                subject,
-                text,
-                from_name=settings.get("from_name") or "",
-                from_email=settings.get("from_email") or "",
-                reply_to=settings.get("reply_to") or settings.get("from_email") or "",
-            )
-            if ok:
-                sent.append({"id": r["id"], "name": r["name"], "email": em})
-            else:
-                errors.append({"id": r["id"], "name": r["name"], "email": em, "error": info})
+            sent, skipped, errors = [], [], []
+            for r in rows:
+                em = (r.get("contact_email") or "").strip()
+                if not em or "@" not in em:
+                    skipped.append({"id": r["id"], "name": r["name"], "reason": "No contact email"})
+                    continue
+                text = body.replace("{{client_name}}", r["name"] or "")
+                text = text.replace("{{name}}", r["name"] or "")
+                ok, info = _send(
+                    [em], subject, text,
+                    from_name=settings.get("from_name") or "",
+                    from_email=settings.get("from_email") or "",
+                    reply_to=settings.get("reply_to") or settings.get("from_email") or "",
+                )
+                if ok:
+                    sent.append({"id": r["id"], "name": r["name"], "email": em})
+                else:
+                    errors.append({"id": r["id"], "name": r["name"], "email": em, "error": info})
 
-        try:
-            log_action(
-                g.firm_id, g.user["id"], "MAIL_SEND",
-                details=f"sent={len(sent)} skipped={len(skipped)} errors={len(errors)} subj={subject[:80]}",
-            )
-        except Exception:
-            pass
+            try:
+                log_action(
+                    g.firm_id, g.user["id"], "MAIL_SEND",
+                    details=f"sent={len(sent)} skipped={len(skipped)} errors={len(errors)} subj={subject[:80]}",
+                )
+            except Exception:
+                pass
 
-        status = 200 if sent and not errors else (207 if sent else 400)
-        return jsonify({
-            "sent_count": len(sent),
-            "skipped_count": len(skipped),
-            "error_count": len(errors),
-            "sent": sent,
-            "skipped": skipped,
-            "errors": errors,
-            "smtp_configured": _smtp_configured(),
-            "detail": (
-                f"Sent {len(sent)}"
-                + (f", skipped {len(skipped)}" if skipped else "")
-                + (f", failed {len(errors)}" if errors else "")
-            ),
-        }), status
+            status = 200 if sent and not errors else (207 if sent else 400)
+            return jsonify({
+                "sent_count": len(sent),
+                "skipped_count": len(skipped),
+                "error_count": len(errors),
+                "sent": sent,
+                "skipped": skipped,
+                "errors": errors,
+                "smtp_configured": _smtp_configured(),
+                "detail": (
+                    f"Sent {len(sent)}"
+                    + (f", skipped {len(skipped)}" if skipped else "")
+                    + (f", failed {len(errors)}" if errors else "")
+                ),
+            }), status
+        except Exception as e:
+            print("[mail] send:", e)
+            return jsonify({"detail": f"Send failed: {e}"}), 500
 
     print("[mail] Client mail module registered")
