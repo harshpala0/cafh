@@ -1,12 +1,16 @@
-"""CA FirmHub — Client mail (SMTP). Designed & Built by Harsh Pala.
+"""CA FirmHub — Client mail. Designed & Built by Harsh Pala.
 
-Admin stores from-name / from-email for the firm.
+Preferred: RESEND_API_KEY (HTTPS — works on Render free tier).
+Fallback: SMTP_* (often blocked/timed out on Render → Gmail).
+
 Staff select clients; mail goes to contact_email on client records.
-SMTP: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_TLS, SMTP_SSL.
 """
+import json
 import os
 import socket
 import smtplib
+import urllib.error
+import urllib.request
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import request, jsonify, g
@@ -33,23 +37,7 @@ def register_mail_enhance(app, helpers):
             return True
         except Exception as e:
             print("[mail] ensure:", e)
-            try:
-                exists = qry(
-                    "SELECT 1 AS x FROM information_schema.tables "
-                    "WHERE table_schema='public' AND table_name='firm_mail_settings'",
-                    one=True,
-                )
-                if not exists:
-                    execute(
-                        "CREATE TABLE firm_mail_settings ("
-                        "firm_id INTEGER PRIMARY KEY, from_name TEXT, from_email TEXT, "
-                        "reply_to TEXT, signature TEXT, "
-                        "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-                    )
-                return True
-            except Exception as e2:
-                print("[mail] ensure fallback:", e2)
-                return False
+            return False
 
     def staff_ok():
         role = (g.user or {}).get("role") or ""
@@ -59,10 +47,16 @@ def register_mail_enhance(app, helpers):
         role = (g.user or {}).get("role") or ""
         return role in ("Admin", "SuperAdmin")
 
+    def _resend_configured():
+        return bool((os.environ.get("RESEND_API_KEY") or "").strip())
+
     def _smtp_configured():
         return bool(os.environ.get("SMTP_HOST") and (
             os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER")
         ))
+
+    def _mail_configured():
+        return _resend_configured() or _smtp_configured()
 
     def _get_settings(firm_id):
         _ensure()
@@ -77,15 +71,68 @@ def register_mail_enhance(app, helpers):
             row = None
         if not row or not isinstance(row, dict):
             row = {}
+        mode = "none"
+        if _resend_configured():
+            mode = "resend"
+        elif _smtp_configured():
+            mode = "smtp"
         return {
             "from_name": row.get("from_name") or "",
             "from_email": row.get("from_email") or "",
             "reply_to": row.get("reply_to") or "",
             "signature": row.get("signature") or "",
-            "smtp_configured": _smtp_configured(),
+            "smtp_configured": _mail_configured(),
+            "mail_mode": mode,
         }
 
-    def _send(to_list, subject, body, from_name="", from_email="", reply_to=""):
+    def _send_resend(to_list, subject, body, from_name="", from_email="", reply_to=""):
+        api_key = (os.environ.get("RESEND_API_KEY") or "").strip()
+        if not api_key:
+            return False, "RESEND_API_KEY not set"
+        resend_from = (os.environ.get("RESEND_FROM") or "").strip()
+        if not resend_from:
+            name = from_name or "CA FirmHub"
+            resend_from = f"{name} <onboarding@resend.dev>"
+        elif from_name and "<" not in resend_from:
+            resend_from = f"{from_name} <{resend_from}>"
+
+        payload = {
+            "from": resend_from,
+            "to": to_list,
+            "subject": subject,
+            "text": body,
+        }
+        rt = reply_to or from_email
+        if rt and "@" in rt:
+            payload["reply_to"] = rt
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                try:
+                    out = json.loads(raw)
+                except Exception:
+                    out = {}
+                if resp.status in (200, 201):
+                    return True, out.get("id") or "sent"
+                return False, raw[:300]
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")[:400]
+            return False, f"Resend HTTP {e.code}: {err_body}"
+        except Exception as e:
+            return False, str(e)
+
+    def _send_smtp(to_list, subject, body, from_name="", from_email="", reply_to=""):
         host = (os.environ.get("SMTP_HOST") or "").strip()
         port = int(os.environ.get("SMTP_PORT") or "587")
         user = (os.environ.get("SMTP_USER") or "").strip()
@@ -94,12 +141,7 @@ def register_mail_enhance(app, helpers):
         use_ssl = (os.environ.get("SMTP_SSL") or "").strip() in ("1", "true", "True", "yes")
         use_tls = os.environ.get("SMTP_TLS", "1") != "0"
         if not host or not env_from:
-            return False, "SMTP not configured on server (set SMTP_HOST, SMTP_FROM, SMTP_USER, SMTP_PASS)"
-        if isinstance(to_list, str):
-            to_list = [a.strip() for a in to_list.split(",") if a.strip()]
-        to_list = [a for a in to_list if a and "@" in a]
-        if not to_list:
-            return False, "No valid recipient addresses"
+            return False, "SMTP not configured"
         display_from = f"{from_name} <{env_from}>" if from_name else env_from
         msg = MIMEMultipart()
         msg["From"] = display_from
@@ -123,15 +165,11 @@ def register_mail_enhance(app, helpers):
         target = _ipv4_host(host, port)
         try:
             if use_ssl or port == 465:
-                context = None
-                try:
-                    import ssl as _ssl
-                    context = _ssl.create_default_context()
-                except Exception:
-                    context = None
-                server = smtplib.SMTP_SSL(target, port, timeout=45, context=context)
+                import ssl as _ssl
+                context = _ssl.create_default_context()
+                server = smtplib.SMTP_SSL(target, port, timeout=30, context=context)
             else:
-                server = smtplib.SMTP(target, port, timeout=45)
+                server = smtplib.SMTP(target, port, timeout=30)
                 if use_tls:
                     server.ehlo()
                     server.starttls()
@@ -141,13 +179,26 @@ def register_mail_enhance(app, helpers):
             server.sendmail(env_from, to_list, msg.as_string())
             server.quit()
             return True, "sent"
-        except OSError as e:
-            return False, (
-                f"{e}. Check SMTP_* env vars. On Render try SMTP_PORT=465 and SMTP_SSL=1, "
-                "or use SendGrid/Resend SMTP. Ensure Gmail App Password (not normal password)."
-            )
         except Exception as e:
-            return False, str(e)
+            return False, (
+                f"{e}. Gmail SMTP often times out on Render free tier. "
+                "Use RESEND_API_KEY instead (HTTPS, works reliably)."
+            )
+
+    def _send(to_list, subject, body, from_name="", from_email="", reply_to=""):
+        if isinstance(to_list, str):
+            to_list = [a.strip() for a in to_list.split(",") if a.strip()]
+        to_list = [a for a in to_list if a and "@" in a]
+        if not to_list:
+            return False, "No valid recipient addresses"
+        if _resend_configured():
+            return _send_resend(to_list, subject, body, from_name, from_email, reply_to)
+        if _smtp_configured():
+            return _send_smtp(to_list, subject, body, from_name, from_email, reply_to)
+        return False, (
+            "No mail provider configured. Set RESEND_API_KEY (recommended on Render) "
+            "or SMTP_HOST/SMTP_USER/SMTP_PASS/SMTP_FROM."
+        )
 
     @app.route("/api/mail/settings")
     @login_required
@@ -160,7 +211,7 @@ def register_mail_enhance(app, helpers):
             print("[mail] settings_get:", e)
             return jsonify({
                 "from_name": "", "from_email": "", "reply_to": "", "signature": "",
-                "smtp_configured": _smtp_configured(),
+                "smtp_configured": _mail_configured(), "mail_mode": "none",
             })
 
     @app.route("/api/mail/settings", methods=["PUT", "POST"])
@@ -223,18 +274,12 @@ def register_mail_enhance(app, helpers):
                     "FROM clients WHERE firm_id=%s AND COALESCE(is_active, TRUE)=TRUE ORDER BY name",
                     (g.firm_id,),
                 ) or []
-            except Exception as e:
-                print("[mail] clients query:", e)
-                try:
-                    rows = qry(
-                        "SELECT id, name, contact_person, contact_email, contact_phone, entity_type "
-                        "FROM clients WHERE firm_id=%s ORDER BY name",
-                        (g.firm_id,),
-                    ) or []
-                except Exception as e2:
-                    print("[mail] clients query2:", e2)
-                    return jsonify({"detail": f"Could not load clients: {e2}"}), 500
-
+            except Exception:
+                rows = qry(
+                    "SELECT id, name, contact_person, contact_email, contact_phone, entity_type "
+                    "FROM clients WHERE firm_id=%s ORDER BY name",
+                    (g.firm_id,),
+                ) or []
             out = []
             for r in rows:
                 if not isinstance(r, dict):
@@ -326,7 +371,8 @@ def register_mail_enhance(app, helpers):
                 "sent": sent,
                 "skipped": skipped,
                 "errors": errors,
-                "smtp_configured": _smtp_configured(),
+                "smtp_configured": _mail_configured(),
+                "mail_mode": settings.get("mail_mode"),
                 "detail": (
                     f"Sent {len(sent)}"
                     + (f", skipped {len(skipped)}" if skipped else "")
@@ -337,4 +383,4 @@ def register_mail_enhance(app, helpers):
             print("[mail] send:", e)
             return jsonify({"detail": f"Send failed: {e}"}), 500
 
-    print("[mail] Client mail module registered")
+    print("[mail] Client mail module registered (Resend + SMTP)")
