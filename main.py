@@ -291,6 +291,19 @@ except Exception as _mail_err:
 
 
 try:
+    from mail_context_enhance import register_mail_context
+    register_mail_context(app, {
+        "qry": _ns["qry"],
+        "execute": _ns["execute"],
+        "login_required": _ns["login_required"],
+        "require_role": _ns["require_role"],
+        "log_action": _ns.get("log_action", lambda *a, **k: None),
+    })
+except Exception as _mail_ctx_err:
+    print("[CA FirmHub] Mail context enhance not loaded:", _mail_ctx_err)
+
+
+try:
     def _sa_with_library():
         path = Path(__file__).resolve().parent / "static" / "superadmin.html"
         html = path.read_text(encoding="utf-8")
