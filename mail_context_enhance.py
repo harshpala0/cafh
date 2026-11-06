@@ -1,1 +1,177 @@
-"""CA FirmHub — Mail client-context attachments. Designed & Built by Harsh Pala.\n\nOptional sections (pending queries, overdue, upcoming dues) appended per client\nonly when the sender ticks the corresponding checkbox. No cross-client leakage.\n"""\nfrom datetime import date, timedelta, datetime\nfrom flask import request, jsonify, g\n\n\ndef register_mail_context(app, helpers):\n    qry = helpers[\"qry\"]\n    login_required = helpers[\"login_required\"]\n\n    orig_send = app.view_functions.get(\"mail_send\")\n\n    def staff_ok():\n        role = (g.user or {}).get(\"role\") or \"\"\n        return role in (\"Admin\", \"TeamLeader\", \"Member\", \"SuperAdmin\", \"Team Leader\")\n\n    def _client_mail_context(firm_id, client_ids, upcoming_days=30):\n        today = date.today()\n        upcoming_end = today + timedelta(days=int(upcoming_days or 30))\n        out = {int(cid): {\"pending_queries\": [], \"overdue\": [], \"upcoming\": []} for cid in client_ids}\n\n        for cid in client_ids:\n            for sql in (\n                \"SELECT COALESCE(subject, title, query_text, description, '') AS subject, \"\n                \"COALESCE(status,'') AS status FROM queries WHERE firm_id=%s AND client_id=%s \"\n                \"AND LOWER(COALESCE(status,'')) NOT IN ('closed','resolved','completed','done','answered') LIMIT 20\",\n                \"SELECT COALESCE(subject, title, query_text, '') AS subject, COALESCE(status,'') AS status \"\n                \"FROM client_queries WHERE firm_id=%s AND client_id=%s \"\n                \"AND LOWER(COALESCE(status,'')) NOT IN ('closed','resolved','completed','done') LIMIT 20\",\n                \"SELECT COALESCE(query_text, subject, title, '') AS subject, COALESCE(status,'') AS status \"\n                \"FROM query_sheet WHERE firm_id=%s AND client_id=%s \"\n                \"AND LOWER(COALESCE(status,'')) NOT IN ('closed','resolved','completed','done') LIMIT 20\",\n            ):\n                try:\n                    rows = qry(sql, (firm_id, cid)) or []\n                    for r in rows:\n                        subj = (r.get(\"subject\") or \"\").strip() or \"Query\"\n                        st = (r.get(\"status\") or \"\").strip()\n                        out[int(cid)][\"pending_queries\"].append(subj if not st else f\"{subj} [{st}]\")\n                    if out[int(cid)][\"pending_queries\"]:\n                        break\n                except Exception:\n                    continue\n\n        for cid in client_ids:\n            try:\n                rows = qry(\n                    \"SELECT title, category, due_date, COALESCE(status,'') AS status \"\n                    \"FROM compliance_calendar WHERE firm_id=%s AND client_id=%s \"\n                    \"AND due_date IS NOT NULL \"\n                    \"AND LOWER(COALESCE(status,'')) NOT IN ('completed','filed','done','closed')\",\n                    (firm_id, cid),\n                ) or []\n            except Exception as e:\n                print(\"[mail_ctx] calendar:\", e)\n                rows = []\n            for r in rows:\n                dd = r.get(\"due_date\")\n                if hasattr(dd, \"isoformat\"):\n                    ddate = dd if isinstance(dd, date) else (dd.date() if hasattr(dd, \"date\") else None)\n                    ds = dd.isoformat()[:10]\n                else:\n                    ds = str(dd or \"\")[:10]\n                    try:\n                        ddate = datetime.strptime(ds, \"%Y-%m-%d\").date()\n                    except Exception:\n                        ddate = None\n                if ddate is None:\n                    continue\n                title = (r.get(\"title\") or \"Compliance item\").strip()\n                cat = (r.get(\"category\") or \"\").strip()\n                line = f\"{title}\" + (f\" ({cat})\" if cat else \"\") + (f\" — due {ds}\" if ds else \"\")\n                if ddate < today:\n                    out[int(cid)][\"overdue\"].append(line)\n                elif ddate <= upcoming_end:\n                    out[int(cid)][\"upcoming\"].append(line)\n\n        for cid in out:\n            out[cid][\"pending_queries\"] = out[cid][\"pending_queries\"][:15]\n            out[cid][\"overdue\"] = sorted(out[cid][\"overdue\"])[:20]\n            out[cid][\"upcoming\"] = sorted(out[cid][\"upcoming\"])[:20]\n        return out\n\n    def _append_sections(body, ctx, include_queries, include_overdue, include_upcoming):\n        parts = [body.rstrip()]\n        if include_queries and ctx.get(\"pending_queries\"):\n            parts.append(\"\\n\\n--- Pending queries ---\\n\" + \"\\n\".join(f\"• {x}\" for x in ctx[\"pending_queries\"]))\n        if include_overdue and ctx.get(\"overdue\"):\n            parts.append(\"\\n\\n--- Overdue compliance dates ---\\n\" + \"\\n\".join(f\"• {x}\" for x in ctx[\"overdue\"]))\n        if include_upcoming and ctx.get(\"upcoming\"):\n            parts.append(\"\\n\\n--- Upcoming due dates ---\\n\" + \"\\n\".join(f\"• {x}\" for x in ctx[\"upcoming\"]))\n        return \"\\n\".join(parts).strip() + \"\\n\"\n\n    @app.route(\"/api/mail/client-context\")\n    @login_required\n    def mail_client_context():\n        try:\n            if not staff_ok():\n                return jsonify({\"detail\": \"Staff only\"}), 403\n            ids = request.args.get(\"client_ids\") or \"\"\n            client_ids = [int(x) for x in ids.split(\",\") if x.strip().isdigit()]\n            if not client_ids:\n                rows = qry(\n                    \"SELECT id FROM clients WHERE firm_id=%s AND COALESCE(is_active,TRUE)=TRUE \"\n                    \"AND contact_email IS NOT NULL AND contact_email LIKE '%%%%@%%%%'\",\n                    (g.firm_id,),\n                ) or []\n                client_ids = [int(r[\"id\"]) for r in rows if r.get(\"id\") is not None]\n            ctx = _client_mail_context(g.firm_id, client_ids)\n            summary = {}\n            for cid, v in ctx.items():\n                summary[str(cid)] = {\n                    \"pending_queries_count\": len(v[\"pending_queries\"]),\n                    \"overdue_count\": len(v[\"overdue\"]),\n                    \"upcoming_count\": len(v[\"upcoming\"]),\n                    \"pending_queries\": v[\"pending_queries\"][:5],\n                    \"overdue\": v[\"overdue\"][:5],\n                    \"upcoming\": v[\"upcoming\"][:5],\n                }\n            return jsonify({\"clients\": summary, \"upcoming_days\": 30})\n        except Exception as e:\n            print(\"[mail_ctx] client-context:\", e)\n            return jsonify({\"detail\": str(e), \"clients\": {}}), 500\n\n    if orig_send:\n        from functools import wraps\n\n        @wraps(orig_send)\n        def mail_send_wrapped():\n            d = request.get_json(silent=True) or {}\n            include_queries = bool(d.get(\"include_pending_queries\"))\n            include_overdue = bool(d.get(\"include_overdue\"))\n            include_upcoming = bool(d.get(\"include_upcoming\"))\n            if not (include_queries or include_overdue or include_upcoming):\n                return orig_send()\n\n            subject = (d.get(\"subject\") or \"\").strip()\n            body = (d.get(\"body\") or \"\").strip()\n            client_ids = d.get(\"client_ids\") or []\n            if not subject or not body or not client_ids:\n                return orig_send()\n            try:\n                client_ids = [int(x) for x in client_ids]\n            except Exception:\n                return orig_send()\n\n            from flask import request as flask_request\n\n            try:\n                settings = qry(\n                    \"SELECT * FROM firm_mail_settings WHERE firm_id=%s\",\n                    (g.firm_id,), one=True,\n                ) or {}\n            except Exception:\n                settings = {}\n            if settings.get(\"signature\"):\n                body = body.rstrip() + \"\\n\\n\" + (settings.get(\"signature\") or \"\")\n\n            ctx_map = _client_mail_context(g.firm_id, client_ids)\n            placeholders = \",\".join([\"%s\"] * len(client_ids))\n            rows = qry(\n                f\"SELECT id, name, contact_email FROM clients \"\n                f\"WHERE firm_id=%s AND id IN ({placeholders})\",\n                tuple([g.firm_id] + client_ids),\n            ) or []\n\n            sent, skipped, errors = [], [], []\n            for r in rows:\n                em = (r.get(\"contact_email\") or \"\").strip()\n                if not em or \"@\" not in em:\n                    skipped.append({\"id\": r[\"id\"], \"name\": r[\"name\"], \"reason\": \"No contact email\"})\n                    continue\n                text = body.replace(\"{{client_name}}\", r[\"name\"] or \"\").replace(\"{{name}}\", r[\"name\"] or \"\")\n                cid = int(r[\"id\"])\n                if cid in ctx_map:\n                    text = _append_sections(\n                        text, ctx_map[cid], include_queries, include_overdue, include_upcoming\n                    )\n                real_get_json = flask_request.get_json\n                flask_request.get_json = lambda silent=True, **kw: {\n                    \"subject\": subject,\n                    \"body\": text,\n                    \"client_ids\": [cid],\n                }\n                try:\n                    resp = orig_send()\n                    data = resp[0].get_json() if isinstance(resp, tuple) else resp.get_json()\n                    if data.get(\"sent_count\"):\n                        sent.append({\"id\": r[\"id\"], \"name\": r[\"name\"], \"email\": em})\n                    elif data.get(\"errors\"):\n                        errors.extend(data[\"errors\"])\n                    else:\n                        errors.append({\"id\": r[\"id\"], \"name\": r[\"name\"], \"email\": em, \"error\": data.get(\"detail\") or \"failed\"})\n                except Exception as e:\n                    errors.append({\"id\": r[\"id\"], \"name\": r[\"name\"], \"email\": em, \"error\": str(e)})\n                finally:\n                    flask_request.get_json = real_get_json\n\n            status = 200 if sent and not errors else (207 if sent else 400)\n            return jsonify({\n                \"sent_count\": len(sent),\n                \"skipped_count\": len(skipped),\n                \"error_count\": len(errors),\n                \"sent\": sent,\n                \"skipped\": skipped,\n                \"errors\": errors,\n                \"detail\": (\n                    f\"Sent {len(sent)}\"\n                    + (f\", skipped {len(skipped)}\" if skipped else \"\")\n                    + (f\", failed {len(errors)}\" if errors else \"\")\n                ),\n            }), status\n\n        app.view_functions[\"mail_send\"] = mail_send_wrapped\n        for ep, fn in list(app.view_functions.items()):\n            if fn is orig_send:\n                app.view_functions[ep] = mail_send_wrapped\n\n    print(\"[mail_ctx] Client-context mail sections registered\")\n
+"""CA FirmHub — Mail client-context. Designed & Built by Harsh Pala."""
+from datetime import date, timedelta, datetime
+from flask import request, jsonify, g
+
+
+def register_mail_context(app, helpers):
+    qry = helpers["qry"]
+    login_required = helpers["login_required"]
+    orig_send = app.view_functions.get("mail_send")
+
+    def staff_ok():
+        role = (g.user or {}).get("role") or ""
+        return role in ("Admin", "TeamLeader", "Member", "SuperAdmin", "Team Leader")
+
+    def _ctx(firm_id, client_ids, days=30):
+        today = date.today()
+        end = today + timedelta(days=days)
+        out = {int(c): {"pending_queries": [], "overdue": [], "upcoming": []} for c in client_ids}
+        for cid in client_ids:
+            for sql in (
+                "SELECT COALESCE(subject,title,query_text,description,'') AS subject, COALESCE(status,'') AS status "
+                "FROM queries WHERE firm_id=%s AND client_id=%s AND LOWER(COALESCE(status,'')) "
+                "NOT IN ('closed','resolved','completed','done','answered') LIMIT 20",
+                "SELECT COALESCE(subject,title,query_text,'') AS subject, COALESCE(status,'') AS status "
+                "FROM client_queries WHERE firm_id=%s AND client_id=%s AND LOWER(COALESCE(status,'')) "
+                "NOT IN ('closed','resolved','completed','done') LIMIT 20",
+            ):
+                try:
+                    for r in (qry(sql, (firm_id, cid)) or []):
+                        s = (r.get("subject") or "").strip() or "Query"
+                        st = (r.get("status") or "").strip()
+                        out[int(cid)]["pending_queries"].append(s if not st else f"{s} [{st}]")
+                    if out[int(cid)]["pending_queries"]:
+                        break
+                except Exception:
+                    continue
+            try:
+                rows = qry(
+                    "SELECT title, category, due_date FROM compliance_calendar "
+                    "WHERE firm_id=%s AND client_id=%s AND due_date IS NOT NULL "
+                    "AND LOWER(COALESCE(status,'')) NOT IN ('completed','filed','done','closed')",
+                    (firm_id, cid),
+                ) or []
+            except Exception:
+                rows = []
+            for r in rows:
+                dd = r.get("due_date")
+                if hasattr(dd, "isoformat"):
+                    ddate = dd if isinstance(dd, date) else dd.date()
+                    ds = dd.isoformat()[:10]
+                else:
+                    ds = str(dd or "")[:10]
+                    try:
+                        ddate = datetime.strptime(ds, "%Y-%m-%d").date()
+                    except Exception:
+                        continue
+                title = (r.get("title") or "Item").strip()
+                cat = (r.get("category") or "").strip()
+                line = f"{title}" + (f" ({cat})" if cat else "") + f" — due {ds}"
+                if ddate < today:
+                    out[int(cid)]["overdue"].append(line)
+                elif ddate <= end:
+                    out[int(cid)]["upcoming"].append(line)
+        for cid in out:
+            out[cid]["pending_queries"] = out[cid]["pending_queries"][:15]
+            out[cid]["overdue"] = sorted(out[cid]["overdue"])[:20]
+            out[cid]["upcoming"] = sorted(out[cid]["upcoming"])[:20]
+        return out
+
+    def _append(body, ctx, q, o, u):
+        parts = [body.rstrip()]
+        if q and ctx.get("pending_queries"):
+            parts.append("\n\n--- Pending queries ---\n" + "\n".join(f"• {x}" for x in ctx["pending_queries"]))
+        if o and ctx.get("overdue"):
+            parts.append("\n\n--- Overdue compliance dates ---\n" + "\n".join(f"• {x}" for x in ctx["overdue"]))
+        if u and ctx.get("upcoming"):
+            parts.append("\n\n--- Upcoming due dates ---\n" + "\n".join(f"• {x}" for x in ctx["upcoming"]))
+        return "\n".join(parts).strip() + "\n"
+
+    @app.route("/api/mail/client-context")
+    @login_required
+    def mail_client_context():
+        if not staff_ok():
+            return jsonify({"detail": "Staff only"}), 403
+        ids = [int(x) for x in (request.args.get("client_ids") or "").split(",") if x.strip().isdigit()]
+        if not ids:
+            rows = qry(
+                "SELECT id FROM clients WHERE firm_id=%s AND COALESCE(is_active,TRUE)=TRUE "
+                "AND contact_email IS NOT NULL AND contact_email LIKE '%%@%%'",
+                (g.firm_id,),
+            ) or []
+            ids = [int(r["id"]) for r in rows if r.get("id") is not None]
+        ctx = _ctx(g.firm_id, ids)
+        summary = {
+            str(cid): {
+                "pending_queries_count": len(v["pending_queries"]),
+                "overdue_count": len(v["overdue"]),
+                "upcoming_count": len(v["upcoming"]),
+                "pending_queries": v["pending_queries"][:5],
+                "overdue": v["overdue"][:5],
+                "upcoming": v["upcoming"][:5],
+            }
+            for cid, v in ctx.items()
+        }
+        return jsonify({"clients": summary, "upcoming_days": 30})
+
+    if orig_send:
+        from functools import wraps
+        from flask import request as fr
+
+        @wraps(orig_send)
+        def wrapped():
+            d = request.get_json(silent=True) or {}
+            iq = bool(d.get("include_pending_queries"))
+            io = bool(d.get("include_overdue"))
+            iu = bool(d.get("include_upcoming"))
+            if not (iq or io or iu):
+                return orig_send()
+            subject = (d.get("subject") or "").strip()
+            body = (d.get("body") or "").strip()
+            client_ids = d.get("client_ids") or []
+            if not subject or not body or not client_ids:
+                return orig_send()
+            try:
+                client_ids = [int(x) for x in client_ids]
+            except Exception:
+                return orig_send()
+            try:
+                settings = qry("SELECT * FROM firm_mail_settings WHERE firm_id=%s", (g.firm_id,), one=True) or {}
+            except Exception:
+                settings = {}
+            if settings.get("signature"):
+                body = body.rstrip() + "\n\n" + settings["signature"]
+            ctx_map = _ctx(g.firm_id, client_ids)
+            ph = ",".join(["%s"] * len(client_ids))
+            rows = qry(
+                f"SELECT id, name, contact_email FROM clients WHERE firm_id=%s AND id IN ({ph})",
+                tuple([g.firm_id] + client_ids),
+            ) or []
+            sent, skipped, errors = [], [], []
+            for r in rows:
+                em = (r.get("contact_email") or "").strip()
+                if not em or "@" not in em:
+                    skipped.append({"id": r["id"], "name": r["name"], "reason": "No contact email"})
+                    continue
+                text = body.replace("{{client_name}}", r["name"] or "").replace("{{name}}", r["name"] or "")
+                cid = int(r["id"])
+                if cid in ctx_map:
+                    text = _append(text, ctx_map[cid], iq, io, iu)
+                real = fr.get_json
+                fr.get_json = lambda silent=True, **kw: {"subject": subject, "body": text, "client_ids": [cid]}
+                try:
+                    resp = orig_send()
+                    data = resp[0].get_json() if isinstance(resp, tuple) else resp.get_json()
+                    if data.get("sent_count"):
+                        sent.append({"id": r["id"], "name": r["name"], "email": em})
+                    elif data.get("errors"):
+                        errors.extend(data["errors"])
+                    else:
+                        errors.append({"id": r["id"], "name": r["name"], "email": em, "error": data.get("detail") or "failed"})
+                except Exception as e:
+                    errors.append({"id": r["id"], "name": r["name"], "email": em, "error": str(e)})
+                finally:
+                    fr.get_json = real
+            st = 200 if sent and not errors else (207 if sent else 400)
+            return jsonify({
+                "sent_count": len(sent), "skipped_count": len(skipped), "error_count": len(errors),
+                "sent": sent, "skipped": skipped, "errors": errors,
+                "detail": f"Sent {len(sent)}" + (f", skipped {len(skipped)}" if skipped else "") + (f", failed {len(errors)}" if errors else ""),
+            }), st
+
+        app.view_functions["mail_send"] = wrapped
+        for ep, fn in list(app.view_functions.items()):
+            if fn is orig_send:
+                app.view_functions[ep] = wrapped
+
+    print("[mail_ctx] Client-context mail sections registered")
