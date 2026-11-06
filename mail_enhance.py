@@ -1,9 +1,11 @@
 """CA FirmHub — Client mail. Designed & Built by Harsh Pala.
 
-Preferred: RESEND_API_KEY (HTTPS — works on Render free tier).
-Fallback: SMTP_* (often blocked/timed out on Render → Gmail).
+Preferred: Google Apps Script bridge (GMAIL_SCRIPT_URL + GMAIL_SCRIPT_SECRET)
+  — uses your noreply Gmail over HTTPS (works on Render free tier).
+Fallback: RESEND_API_KEY, then SMTP_*.
 
 Staff select clients; mail goes to contact_email on client records.
+Reply-To uses firm mail settings / owner email.
 """
 import json
 import os
@@ -47,6 +49,12 @@ def register_mail_enhance(app, helpers):
         role = (g.user or {}).get("role") or ""
         return role in ("Admin", "SuperAdmin")
 
+    def _script_configured():
+        return bool(
+            (os.environ.get("GMAIL_SCRIPT_URL") or "").strip()
+            and (os.environ.get("GMAIL_SCRIPT_SECRET") or "").strip()
+        )
+
     def _resend_configured():
         return bool((os.environ.get("RESEND_API_KEY") or "").strip())
 
@@ -56,7 +64,7 @@ def register_mail_enhance(app, helpers):
         ))
 
     def _mail_configured():
-        return _resend_configured() or _smtp_configured()
+        return _script_configured() or _resend_configured() or _smtp_configured()
 
     def _get_settings(firm_id):
         _ensure()
@@ -72,7 +80,9 @@ def register_mail_enhance(app, helpers):
         if not row or not isinstance(row, dict):
             row = {}
         mode = "none"
-        if _resend_configured():
+        if _script_configured():
+            mode = "gmail_script"
+        elif _resend_configured():
             mode = "resend"
         elif _smtp_configured():
             mode = "smtp"
@@ -84,6 +94,61 @@ def register_mail_enhance(app, helpers):
             "smtp_configured": _mail_configured(),
             "mail_mode": mode,
         }
+
+    def _send_gmail_script(to_list, subject, body, from_name="", from_email="", reply_to=""):
+        url = (os.environ.get("GMAIL_SCRIPT_URL") or "").strip()
+        secret = (os.environ.get("GMAIL_SCRIPT_SECRET") or "").strip()
+        if not url or not secret:
+            return False, "GMAIL_SCRIPT_URL / GMAIL_SCRIPT_SECRET not set"
+
+        default_reply = (os.environ.get("GMAIL_REPLY_TO") or "").strip()
+        rt = reply_to or from_email or default_reply
+        name = from_name or (os.environ.get("GMAIL_FROM_NAME") or "CA FirmHub")
+
+        errors = []
+        sent_n = 0
+        for to in to_list:
+            payload = {
+                "secret": secret,
+                "to": to,
+                "subject": subject,
+                "body": body,
+                "replyTo": rt,
+                "fromName": name,
+            }
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "CA-FirmHub/1.0 (Harsh Pala)",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                    try:
+                        out = json.loads(raw)
+                    except Exception:
+                        out = {"ok": True, "raw": raw[:200]}
+                    if out.get("ok") is False:
+                        errors.append(f"{to}: {out.get('error') or raw[:200]}")
+                    else:
+                        sent_n += 1
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="replace")[:400]
+                errors.append(f"{to}: HTTP {e.code} {err_body}")
+            except Exception as e:
+                errors.append(f"{to}: {e}")
+
+        if sent_n and not errors:
+            return True, "sent"
+        if sent_n and errors:
+            return True, f"partial: {'; '.join(errors)}"
+        return False, "; ".join(errors) if errors else "script send failed"
 
     def _send_resend(to_list, subject, body, from_name="", from_email="", reply_to=""):
         api_key = (os.environ.get("RESEND_API_KEY") or "").strip()
@@ -187,10 +252,7 @@ def register_mail_enhance(app, helpers):
             server.quit()
             return True, "sent"
         except Exception as e:
-            return False, (
-                f"{e}. Gmail SMTP often times out on Render free tier. "
-                "Use RESEND_API_KEY instead (HTTPS, works reliably)."
-            )
+            return False, str(e)
 
     def _send(to_list, subject, body, from_name="", from_email="", reply_to=""):
         if isinstance(to_list, str):
@@ -198,13 +260,15 @@ def register_mail_enhance(app, helpers):
         to_list = [a for a in to_list if a and "@" in a]
         if not to_list:
             return False, "No valid recipient addresses"
+        if _script_configured():
+            return _send_gmail_script(to_list, subject, body, from_name, from_email, reply_to)
         if _resend_configured():
             return _send_resend(to_list, subject, body, from_name, from_email, reply_to)
         if _smtp_configured():
             return _send_smtp(to_list, subject, body, from_name, from_email, reply_to)
         return False, (
-            "No mail provider configured. Set RESEND_API_KEY (recommended on Render) "
-            "or SMTP_HOST/SMTP_USER/SMTP_PASS/SMTP_FROM."
+            "No mail provider configured. Set GMAIL_SCRIPT_URL + GMAIL_SCRIPT_SECRET "
+            "(recommended), or RESEND_API_KEY, or SMTP_*."
         )
 
     @app.route("/api/mail/settings")
@@ -336,6 +400,14 @@ def register_mail_enhance(app, helpers):
             if settings.get("signature"):
                 body = body.rstrip() + "\n\n" + settings["signature"]
 
+            reply_to = (
+                settings.get("reply_to")
+                or settings.get("from_email")
+                or (os.environ.get("GMAIL_REPLY_TO") or "").strip()
+                or "harshnpala0@gmail.com"
+            )
+            from_name = settings.get("from_name") or (os.environ.get("GMAIL_FROM_NAME") or "CA FirmHub")
+
             placeholders = ",".join(["%s"] * len(client_ids))
             rows = qry(
                 f"SELECT id, name, contact_email FROM clients "
@@ -353,9 +425,9 @@ def register_mail_enhance(app, helpers):
                 text = text.replace("{{name}}", r["name"] or "")
                 ok, info = _send(
                     [em], subject, text,
-                    from_name=settings.get("from_name") or "",
+                    from_name=from_name,
                     from_email=settings.get("from_email") or "",
-                    reply_to=settings.get("reply_to") or settings.get("from_email") or "",
+                    reply_to=reply_to,
                 )
                 if ok:
                     sent.append({"id": r["id"], "name": r["name"], "email": em})
@@ -390,4 +462,4 @@ def register_mail_enhance(app, helpers):
             print("[mail] send:", e)
             return jsonify({"detail": f"Send failed: {e}"}), 500
 
-    print("[mail] Client mail module registered (Resend + SMTP)")
+    print("[mail] Client mail module registered (Gmail Script + Resend + SMTP)")
