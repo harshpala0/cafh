@@ -97,9 +97,9 @@
         target.innerHTML =
           '<div style="padding:24px">' +
           '<div style="color:var(--err);font-weight:600;margin-bottom:8px">Could not open Mail</div>' +
-          '<div style="color:var(--text2);font-size:13px">' + esc(e.message || String(e)) + '</div>' +
-          '<p style="margin-top:12px;font-size:12.5px;color:var(--text3)">If this persists, hard-refresh after deploy.</p>' +
-          '</div>';
+          '<div style="color:var(--text2);font-size:13px">' +
+          esc(e.message || String(e)) +
+          '</div></div>';
       }
       toast(e.message || 'Mail failed', 'err');
     });
@@ -119,6 +119,62 @@
     };
   }
 
+  var _ctxByClient = {};
+
+  async function loadContextForSelection() {
+    var ids = Array.from(document.querySelectorAll('.mail-cid:checked')).map(function (c) {
+      return c.value;
+    });
+    var box = document.getElementById('mail-ctx-summary');
+    if (!ids.length) {
+      _ctxByClient = {};
+      if (box) box.innerHTML = '<span style="color:var(--text3)">Select clients to preview optional attachments.</span>';
+      updateCtxCounts();
+      return;
+    }
+    if (box) box.innerHTML = '<span style="color:var(--text3)">Loading client details…</span>';
+    try {
+      var d = await api('/api/mail/client-context?client_ids=' + ids.join(','));
+      _ctxByClient = d.clients || {};
+      updateCtxCounts();
+      var lines = [];
+      ids.forEach(function (id) {
+        var c = _ctxByClient[id] || {};
+        lines.push(
+          '<div style="font-size:12px;margin-bottom:4px"><strong>#' +
+            esc(id) +
+            '</strong> — queries: ' +
+            (c.pending_queries_count || 0) +
+            ', overdue: ' +
+            (c.overdue_count || 0) +
+            ', upcoming: ' +
+            (c.upcoming_count || 0) +
+            '</div>'
+        );
+      });
+      if (box) box.innerHTML = lines.join('') || '<span style="color:var(--text3)">No extra items found.</span>';
+    } catch (e) {
+      if (box) box.innerHTML = '<span style="color:var(--warn)">' + esc(e.message || 'Could not load context') + '</span>';
+      updateCtxCounts();
+    }
+  }
+
+  function updateCtxCounts() {
+    var q = 0, o = 0, u = 0;
+    Object.keys(_ctxByClient).forEach(function (id) {
+      var c = _ctxByClient[id] || {};
+      q += c.pending_queries_count || 0;
+      o += c.overdue_count || 0;
+      u += c.upcoming_count || 0;
+    });
+    var elq = document.getElementById('mail-ctx-q-count');
+    var elo = document.getElementById('mail-ctx-o-count');
+    var elu = document.getElementById('mail-ctx-u-count');
+    if (elq) elq.textContent = q ? ' (' + q + ')' : '';
+    if (elo) elo.textContent = o ? ' (' + o + ')' : '';
+    if (elu) elu.textContent = u ? ' (' + u + ')' : '';
+  }
+
   async function showMail() {
     var pb = document.getElementById('pb');
     if (!pb) throw new Error('Content panel (#pb) not found');
@@ -127,6 +183,7 @@
     var settings = data.settings || {};
     var clients = data.clients || [];
     var smtpOk = !!settings.smtp_configured;
+    var mode = settings.mail_mode || (smtpOk ? 'on' : 'none');
 
     pb.innerHTML =
       '<div style="padding:16px 20px;max-width:960px">' +
@@ -134,13 +191,19 @@
       '<div class="card-h">Firm mail identity (Admin)</div>' +
       '<div class="card-b">' +
       (smtpOk
-        ? '<p style="font-size:12.5px;color:var(--ok);margin-bottom:10px">✓ SMTP is configured on the server.</p>'
-        : '<p style="font-size:12.5px;color:var(--warn);margin-bottom:10px">⚠ SMTP not configured yet. Add SMTP_* env vars on Render (see setup guide).</p>') +
+        ? '<p style="font-size:12.5px;color:var(--ok);margin-bottom:10px">✓ Mail transport ready (' +
+          esc(mode) +
+          ').</p>'
+        : '<p style="font-size:12.5px;color:var(--warn);margin-bottom:10px">⚠ Mail not configured on server yet.</p>') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
       '<div class="fg"><label>From name</label>' +
-      '<input id="mail-from-name" value="' + esc(settings.from_name) + '" placeholder="Your CA Firm"></div>' +
+      '<input id="mail-from-name" value="' +
+      esc(settings.from_name) +
+      '" placeholder="Your CA Firm"></div>' +
       '<div class="fg"><label>Your email (Reply-To)</label>' +
-      '<input id="mail-from-email" type="email" value="' + esc(settings.from_email) + '" placeholder="you@firm.com"></div>' +
+      '<input id="mail-from-email" type="email" value="' +
+      esc(settings.from_email || settings.reply_to || '') +
+      '" placeholder="you@firm.com"></div>' +
       '</div>' +
       '<div class="fg" style="margin-top:10px"><label>Signature (appended to every mail)</label>' +
       '<textarea id="mail-sig" rows="3" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--border);font:inherit">' +
@@ -154,9 +217,20 @@
       '<div class="card-b">' +
       '<div class="fg"><label>Subject</label>' +
       '<input id="mail-subj" placeholder="e.g. Documents required for tax audit" style="width:100%"></div>' +
-      '<div class="fg" style="margin-top:10px"><label>Message</label>' +
+      '<div class="fg" style="margin-top:10px"><label>Message (common to all selected clients)</label>' +
       '<textarea id="mail-body" rows="8" style="width:100%;padding:12px;border-radius:8px;border:1.5px solid var(--border);font:inherit" ' +
       'placeholder="Dear Sir/Madam,\n\nPlease share the pending documents…\n\nUse {{client_name}} for the client name."></textarea></div>' +
+      '<div class="card" style="margin-top:14px;background:var(--bg2,#f8fafc);border:1px solid var(--border-l)">' +
+      '<div style="font-size:13px;font-weight:600;color:var(--icai-navy);margin-bottom:8px">Optional client-specific sections</div>' +
+      '<p style="font-size:12px;color:var(--text3);margin:0 0 10px">Tick only what you want appended. Each client receives <strong>only their own</strong> data — never another client\'s.</p>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer;font-size:13px">' +
+      '<input type="checkbox" id="mail-inc-queries"> Include pending queries<span id="mail-ctx-q-count" style="color:var(--text3)"></span></label>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer;font-size:13px">' +
+      '<input type="checkbox" id="mail-inc-overdue"> Include overdue compliance dates<span id="mail-ctx-o-count" style="color:var(--text3)"></span></label>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer;font-size:13px">' +
+      '<input type="checkbox" id="mail-inc-upcoming"> Include upcoming due dates (next 30 days)<span id="mail-ctx-u-count" style="color:var(--text3)"></span></label>' +
+      '<div id="mail-ctx-summary" style="margin-top:8px;padding:8px;border-radius:8px;background:#fff;border:1px dashed var(--border-l);font-size:12px;color:var(--text3)">Select clients to preview optional attachments.</div>' +
+      '</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px;flex-wrap:wrap;gap:8px">' +
       '<div style="font-size:13px;font-weight:600;color:var(--icai-navy)">Select clients (' +
       (data.with_email || 0) +
@@ -208,6 +282,7 @@
         document.querySelectorAll('.mail-cid:not([disabled])').forEach(function (cb) {
           cb.checked = true;
         });
+        loadContextForSelection();
       };
     var selNone = document.getElementById('mail-sel-none');
     if (selNone)
@@ -215,7 +290,11 @@
         document.querySelectorAll('.mail-cid').forEach(function (cb) {
           cb.checked = false;
         });
+        loadContextForSelection();
       };
+    document.querySelectorAll('.mail-cid').forEach(function (cb) {
+      cb.addEventListener('change', loadContextForSelection);
+    });
     var sendBtn = document.getElementById('mail-send-btn');
     if (sendBtn) sendBtn.onclick = sendMail;
   }
@@ -243,6 +322,9 @@
     });
     var subject = ((document.getElementById('mail-subj') || {}).value || '').trim();
     var body = ((document.getElementById('mail-body') || {}).value || '').trim();
+    var include_pending_queries = !!(document.getElementById('mail-inc-queries') || {}).checked;
+    var include_overdue = !!(document.getElementById('mail-inc-overdue') || {}).checked;
+    var include_upcoming = !!(document.getElementById('mail-inc-upcoming') || {}).checked;
     var resEl = document.getElementById('mail-result');
     if (!ids.length) {
       toast('Select at least one client with email', 'err');
@@ -264,7 +346,14 @@
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + token()
         },
-        body: JSON.stringify({ client_ids: ids, subject: subject, body: body })
+        body: JSON.stringify({
+          client_ids: ids,
+          subject: subject,
+          body: body,
+          include_pending_queries: include_pending_queries,
+          include_overdue: include_overdue,
+          include_upcoming: include_upcoming
+        })
       });
       var text = await r.text();
       var d = {};
