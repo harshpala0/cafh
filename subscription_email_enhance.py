@@ -1,9 +1,10 @@
-"""CA FirmHub — email-based subscription gate.
+"""CA FirmHub — email-based subscription gate (multi-firm aware).
 Designed & Built by Harsh Pala.
 
 Subscription remains time-based (expires_at).
-Gate uses owner email instead of requiring Subscription ID every time.
-Email unlocks the firm only; username/password stay firm-scoped.
+Gate uses owner email; multiple firms may share the same email.
+When several firms match, user picks a firm, then signs in with that firm's ID/password.
+Firms never share data — login and all APIs stay firm_id scoped.
 """
 from datetime import datetime, timedelta
 from flask import request, jsonify
@@ -37,12 +38,16 @@ def register_subscription_email_enhance(app, helpers):
             except Exception as e:
                 print("[sub-email] owner_email col:", e)
         try:
+            execute("DROP INDEX IF EXISTS idx_firms_owner_email_lower")
+        except Exception as e:
+            print("[sub-email] drop unique index:", e)
+        try:
             execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_firms_owner_email_lower "
+                "CREATE INDEX IF NOT EXISTS idx_firms_owner_email_lookup "
                 "ON firms (LOWER(owner_email)) WHERE owner_email IS NOT NULL AND owner_email <> ''"
             )
         except Exception as e:
-            print("[sub-email] unique index:", e)
+            print("[sub-email] lookup index:", e)
 
     try:
         _ensure()
@@ -67,20 +72,37 @@ def register_subscription_email_enhance(app, helpers):
             return val.isoformat()
         return s[:10]
 
-    def _firm_from_email(email):
+    def _firms_from_email(email):
         em = _norm_email(email)
         if not em or not EMAIL_RE.match(em):
-            return None
-        return qry(
-            "SELECT * FROM firms WHERE LOWER(TRIM(owner_email))=%s AND is_active=TRUE",
-            (em,), one=True,
-        )
+            return []
+        rows = qry(
+            "SELECT * FROM firms WHERE LOWER(TRIM(owner_email))=%s AND is_active=TRUE "
+            "ORDER BY name",
+            (em,),
+        ) or []
+        return [r for r in rows if isinstance(r, dict)]
 
     def _firm_from_sub(sub_id):
         sid = (sub_id or "").strip()
         if not sid:
             return None
         return qry("SELECT * FROM firms WHERE sub_id=%s AND is_active=TRUE", (sid,), one=True)
+
+    def _check_expiry(firm):
+        exp = firm.get("expires_at")
+        if not exp:
+            return None
+        if hasattr(exp, "isoformat"):
+            d = exp
+        else:
+            try:
+                d = datetime.strptime(str(exp)[:10], "%Y-%m-%d").date()
+            except Exception:
+                return None
+        if datetime.now().date() > d:
+            return f"Subscription expired on {d}"
+        return None
 
     def _issue_token(firm):
         token = jwt.encode(
@@ -99,56 +121,112 @@ def register_subscription_email_enhance(app, helpers):
             pass
         return token
 
-    def _check_expiry(firm):
-        exp = firm.get("expires_at")
-        if not exp:
-            return None
-        if hasattr(exp, "isoformat"):
-            d = exp
-        else:
-            try:
-                d = datetime.strptime(str(exp)[:10], "%Y-%m-%d").date()
-            except Exception:
-                return None
-        if datetime.now().date() > d:
-            return f"Subscription expired on {d}"
-        return None
+    def _issue_selection_token(email):
+        return jwt.encode(
+            {
+                "email_select": True,
+                "email": _norm_email(email),
+                "exp": datetime.utcnow() + timedelta(minutes=30),
+            },
+            SECRET_KEY,
+            algorithm="HS256",
+        )
+
+    def _firm_public(f):
+        return {
+            "id": f["id"],
+            "name": f.get("name") or "",
+            "reg_no": f.get("reg_no") or "",
+            "expires_at": str(f["expires_at"])[:10] if f.get("expires_at") else None,
+        }
+
+    def _success_one(firm, email=""):
+        reason = _check_expiry(firm)
+        if reason:
+            return jsonify({"detail": reason}), 403
+        token = _issue_token(firm)
+        return jsonify({
+            "subscription_token": token,
+            "multiple": False,
+            "firm_name": firm["name"],
+            "firm_id": firm["id"],
+            "firm_reg_no": firm.get("reg_no") or "",
+            "owner_email": firm.get("owner_email") or email or "",
+            "activated": True,
+            "expires_at": str(firm["expires_at"])[:10] if firm.get("expires_at") else None,
+        })
 
     def subscription_verify_email():
         d = request.get_json(silent=True) or {}
         email = _norm_email(d.get("email") or d.get("owner_email") or "")
         sub_id = str(d.get("subscription_id") or d.get("sub_id") or "").strip()
 
-        firm = None
         if email:
             if not EMAIL_RE.match(email):
                 return jsonify({"detail": "Enter a valid email address"}), 400
-            firm = _firm_from_email(email)
-            if not firm:
+            firms = _firms_from_email(email)
+            if not firms:
                 return jsonify({
                     "detail": "No active subscription found for this email. "
                               "Use the email registered with your firm subscription."
                 }), 403
+            live = []
+            for f in firms:
+                if _check_expiry(f):
+                    continue
+                live.append(f)
+            if not live:
+                return jsonify({
+                    "detail": "Subscription expired for all firms linked to this email."
+                }), 403
+            if len(live) == 1:
+                return _success_one(live[0], email)
+            return jsonify({
+                "multiple": True,
+                "owner_email": email,
+                "selection_token": _issue_selection_token(email),
+                "firms": [_firm_public(f) for f in live],
+                "detail": f"{len(live)} firms found for this email. Select your firm to continue.",
+            })
         elif sub_id:
             firm = _firm_from_sub(sub_id)
             if not firm:
                 return jsonify({"detail": "Invalid or inactive Subscription ID"}), 403
+            return _success_one(firm)
         else:
             return jsonify({"detail": "Email or Subscription ID required"}), 400
 
-        reason = _check_expiry(firm)
-        if reason:
-            return jsonify({"detail": reason}), 403
+    def subscription_select_firm():
+        d = request.get_json(silent=True) or {}
+        firm_id = d.get("firm_id")
+        try:
+            firm_id = int(firm_id)
+        except Exception:
+            return jsonify({"detail": "firm_id required"}), 400
 
-        token = _issue_token(firm)
-        return jsonify({
-            "subscription_token": token,
-            "firm_name": firm["name"],
-            "firm_reg_no": firm.get("reg_no") or "",
-            "owner_email": firm.get("owner_email") or email or "",
-            "activated": True,
-            "expires_at": str(firm["expires_at"])[:10] if firm.get("expires_at") else None,
-        })
+        email = _norm_email(d.get("email") or "")
+        sel = (d.get("selection_token") or "").strip()
+        if sel:
+            try:
+                payload = jwt.decode(sel, SECRET_KEY, algorithms=["HS256"])
+                if not payload.get("email_select"):
+                    return jsonify({"detail": "Invalid selection token"}), 401
+                email = _norm_email(payload.get("email") or email)
+            except Exception:
+                return jsonify({"detail": "Selection session expired. Enter email again."}), 401
+        if not email or not EMAIL_RE.match(email):
+            return jsonify({"detail": "Email or selection token required"}), 400
+
+        firm = qry(
+            "SELECT * FROM firms WHERE id=%s AND is_active=TRUE AND LOWER(TRIM(owner_email))=%s",
+            (firm_id, email), one=True,
+        )
+        if not firm:
+            return jsonify({
+                "detail": "Firm not found for this email. Firms cannot be mixed — "
+                          "choose a firm that belongs to the same subscription email."
+            }), 403
+        return _success_one(firm, email)
 
     def subscription_check_email():
         d = request.get_json(silent=True) or {}
@@ -168,6 +246,7 @@ def register_subscription_email_enhance(app, helpers):
             return jsonify({
                 "valid": True,
                 "firm_name": firm["name"],
+                "firm_id": firm["id"],
                 "owner_email": firm.get("owner_email") or "",
             })
         except Exception:
@@ -175,6 +254,20 @@ def register_subscription_email_enhance(app, helpers):
 
     app.view_functions["subscription_verify"] = subscription_verify_email
     app.view_functions["subscription_check"] = subscription_check_email
+
+    try:
+        app.add_url_rule(
+            "/api/subscription/select-firm",
+            "subscription_select_firm",
+            subscription_select_firm,
+            methods=["POST"],
+        )
+    except Exception as e:
+        print("[sub-email] select-firm route:", e)
+        try:
+            app.view_functions["subscription_select_firm"] = subscription_select_firm
+        except Exception:
+            pass
 
     def _create_firm_core():
         _ensure()
@@ -188,16 +281,6 @@ def register_subscription_email_enhance(app, helpers):
             return jsonify({"detail": "Firm name required"}), 400
         if email and not EMAIL_RE.match(email):
             return jsonify({"detail": "Invalid subscription email"}), 400
-        if email:
-            exists = qry(
-                "SELECT id, name FROM firms WHERE LOWER(TRIM(owner_email))=%s",
-                (email,), one=True,
-            )
-            if exists:
-                return jsonify({
-                    "detail": f"Email already linked to firm '{exists.get('name')}' (id {exists['id']}). "
-                              f"Use a different email or edit that firm."
-                }), 400
 
         sub_id = "SUB-" + uuid.uuid4().hex[:12].upper()
         fid = None
@@ -218,7 +301,7 @@ def register_subscription_email_enhance(app, helpers):
                 fid = row["id"] if row else None
         except Exception as e:
             msg = str(e)
-            if "owner_email" in msg.lower():
+            if "owner_email" in msg.lower() or "unique" in msg.lower():
                 try:
                     if qry_id:
                         fid = qry_id(
@@ -277,15 +360,6 @@ def register_subscription_email_enhance(app, helpers):
             email = _norm_email(d.get("owner_email") if "owner_email" in d else d.get("email"))
             if email and not EMAIL_RE.match(email):
                 return jsonify({"detail": "Invalid subscription email"}), 400
-            if email:
-                exists = qry(
-                    "SELECT id, name FROM firms WHERE LOWER(TRIM(owner_email))=%s AND id<>%s",
-                    (email, fid), one=True,
-                )
-                if exists:
-                    return jsonify({
-                        "detail": f"Email already linked to firm '{exists.get('name')}'"
-                    }), 400
             fields.append("owner_email=%s")
             vals.append(email or None)
         if not fields:
@@ -306,4 +380,4 @@ def register_subscription_email_enhance(app, helpers):
         app.view_functions["sa_create_firm"] = _create_firm_core
         app.view_functions["sa_update_firm"] = _update_firm_core
 
-    print("[sub-email] Email-based subscription gate registered")
+    print("[sub-email] Email gate registered (multi-firm selection supported)")
