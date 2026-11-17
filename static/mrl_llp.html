@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LLP MRL Drafter – Statutory Audit of LLPs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Arimo:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+  --bg:#e7ebe8; --panel:#ffffff; --panel2:#f4f6f4; --ink:#1b2624; --muted:#5a6967; --line:#d0d8d4;
+  --accent:#1e5a4b; --accent-ink:#ffffff; --accent-soft:#dcebe4;
+  --paper:#ffffff; --paper-ink:#1a1a1a; --paper-line:#c9cfcc;
+  --fill-bg:#e1efe7; --fill-ink:#174c3e;
+  --miss-bg:#fde7c2; --miss-ink:#7a4100;
+  --new:#2b5c9e; --new-bg:#e3ecf8; --rev:#8a5a00; --rev-bg:#f7ecd3;
+  --danger:#a33a2c;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#141a19; --panel:#1c2422; --panel2:#222c2a; --ink:#e3ebe8; --muted:#9aaba7; --line:#33413e;
+    --accent:#6fc2a6; --accent-ink:#0f1a17; --accent-soft:#23392f;
+    --paper:#20282a; --paper-ink:#e8eceb; --paper-line:#3b4745;
+    --fill-bg:#21402f; --fill-ink:#a7e3c9;
+    --miss-bg:#4a3413; --miss-ink:#ffd08a;
+    --new:#8fb8f0; --new-bg:#1f2f45; --rev:#e6bf6a; --rev-bg:#3b3019;
+    --danger:#f08a7a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#141a19; --panel:#1c2422; --panel2:#222c2a; --ink:#e3ebe8; --muted:#9aaba7; --line:#33413e;
+  --accent:#6fc2a6; --accent-ink:#0f1a17; --accent-soft:#23392f;
+  --paper:#20282a; --paper-ink:#e8eceb; --paper-line:#3b4745;
+  --fill-bg:#21402f; --fill-ink:#a7e3c9;
+  --miss-bg:#4a3413; --miss-ink:#ffd08a;
+  --new:#8fb8f0; --new-bg:#1f2f45; --rev:#e6bf6a; --rev-bg:#3b3019;
+  --danger:#f08a7a;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.45 "Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{display:grid;grid-template-rows:auto 1fr;height:100%}
+
+/* top bar */
+.top{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;flex-direction:column;min-width:0;margin-right:auto}
+.brand b{font-size:15px;letter-spacing:-.01em}
+.brand span{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42ch}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel2)}
+.seg button{border:0;background:transparent;padding:6px 12px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ctl{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.ctl select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-weight:600;font-size:13px}
+.btn{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.blanks{border:0;background:var(--miss-bg);color:var(--miss-ink);border-radius:999px;padding:5px 11px;font-weight:600;font-size:12.5px;cursor:pointer}
+.blanks.ok{background:var(--fill-bg);color:var(--fill-ink);cursor:default}
+.menu{position:relative}
+.menu-pop{position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:6px;min-width:250px;z-index:30;display:none}
+.menu-pop.open{display:block}
+.menu-pop button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:6px;cursor:pointer}
+.menu-pop button:hover{background:var(--panel2)}
+.menu-pop small{display:block;color:var(--muted);font-size:12px}
+
+/* main */
+.main{display:grid;grid-template-columns:minmax(340px,430px) 1fr;min-height:0}
+.edit{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:transparent;padding:8px 11px 9px;cursor:pointer;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.form{overflow-y:auto;padding:6px 16px 60px;flex:1}
+.grp{border-bottom:1px solid var(--line);padding:14px 0}
+.grp h3{margin:0 0 4px;font-size:13.5px}
+.grp>p.gh{margin:0 0 10px;color:var(--muted);font-size:12.5px}
+.fld{margin:10px 0}
+.fld>label{display:block;font-weight:600;font-size:12.5px;margin-bottom:4px}
+.fld input[type=text],.fld input[type=date],.fld select,.fld textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
+.fld textarea{min-height:64px;resize:vertical}
+.fld .hint{color:var(--muted);font-size:12px;margin-top:3px}
+.fld .money{color:var(--fill-ink);font-size:12px;margin-top:3px;font-variant-numeric:tabular-nums}
+.fld.flash input,.fld.flash select,.fld.flash textarea,.fld.flash table{box-shadow:0 0 0 3px var(--miss-bg)}
+.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer;font-weight:500}
+.chk input{margin-top:3px;accent-color:var(--accent)}
+.rows{width:100%;border-collapse:collapse;font-size:12.5px}
+.rows-wrap{overflow-x:auto}
+.rows th{text-align:left;font-weight:600;color:var(--muted);padding:3px 4px;font-size:11.5px;vertical-align:bottom}
+.rows td{padding:2px}
+.rows input{width:100%;min-width:90px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}
+.rows .x{border:0;background:transparent;color:var(--danger);cursor:pointer;font-size:16px;padding:0 4px}
+.addrow{margin-top:6px;border:1px dashed var(--line);background:transparent;border-radius:6px;padding:5px 10px;cursor:pointer;color:var(--accent);font-weight:600;font-size:12.5px}
+.inv td:first-child{white-space:nowrap;padding-right:8px}
+.inv select{padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);max-width:150px}
+.inv tfoot td{font-weight:700;padding-top:6px}
+.verdict{border-radius:8px;padding:9px 11px;font-size:12.5px;margin-top:8px}
+.verdict.y{background:var(--fill-bg);color:var(--fill-ink)}
+.verdict.n{background:var(--miss-bg);color:var(--miss-ink)}
+
+/* additions list */
+.add-item{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.add-item input{margin-top:3px;accent-color:var(--accent)}
+.add-item b{font-size:13px}
+.add-item .meta{grid-column:2;color:var(--muted);font-size:12px}
+.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+.pill.new{background:var(--new-bg);color:var(--new)}
+.pill.rev{background:var(--rev-bg);color:var(--rev)}
+.fixes{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+.fixes li{margin:5px 0}
+
+/* preview */
+.view{display:flex;flex-direction:column;min-height:0}
+.vbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.vbar .seg button{padding:5px 11px}
+.vbar label{font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer}
+.vbar input{accent-color:var(--accent)}
+.legend{margin-left:auto;display:flex;gap:10px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend i{font-style:normal;padding:0 5px;border-radius:3px}
+.scroll{overflow:auto;padding:26px 20px 80px;flex:1}
+.paper{background:var(--paper);color:var(--paper-ink);max-width:800px;margin:0 auto;padding:64px 72px;border:1px solid var(--paper-line);box-shadow:0 1px 2px rgba(0,0,0,.05),0 12px 32px rgba(0,0,0,.07);font:13.5px/1.55 Arimo,Arial,"Liberation Sans",sans-serif}
+.paper p{margin:0 0 9px;text-align:justify}
+.paper .addr p{margin:0;text-align:left}
+.paper .ref{display:grid;grid-template-columns:48px 1fr;gap:2px 8px;margin:14px 0 14px 40px}
+.paper .ref b{font-weight:700}
+.paper h4{font-size:13.5px;margin:18px 0 8px;display:flex;gap:10px}
+.paper h4.off{opacity:.35}
+.it{position:relative;display:grid;grid-template-columns:34px 1fr;margin:0 0 8px 24px;border-radius:4px}
+.it .no{padding-top:0}
+.it .bd>p{margin-bottom:6px}
+.it.off .bd,.it.off .no{opacity:.35;text-decoration:line-through;text-decoration-color:rgba(127,127,127,.6)}
+.it .tg{position:absolute;left:-46px;top:0;width:26px;height:22px;border:1px solid var(--paper-line);border-radius:5px;background:var(--paper);cursor:pointer;font-size:12px;color:var(--accent);opacity:.0;transition:opacity .12s}
+.it:hover .tg,.it .tg:focus-visible,.it.off .tg{opacity:1}
+.it.off .tg{color:var(--muted)}
+.it .tag{position:absolute;right:-64px;top:1px;font:700 10.5px/1.6 "Public Sans",sans-serif;border-radius:4px;padding:0 6px;cursor:help}
+.tag.new{background:var(--new-bg);color:var(--new)}
+.tag.rev{background:var(--rev-bg);color:var(--rev)}
+.it.tagged-new{box-shadow:-3px 0 0 var(--new-bg)}
+.it.tagged-rev{box-shadow:-3px 0 0 var(--rev-bg)}
+.bl{list-style:none;margin:0 0 6px;padding:0}
+.bl li{display:grid;grid-template-columns:30px 1fr;margin:3px 0;text-align:justify}
+.ptab-wrap{overflow-x:auto;margin:4px 0 8px}
+.ptab{border-collapse:collapse;width:100%;font-size:12.5px}
+.ptab th,.ptab td{border:1px solid var(--paper-line);padding:4px 7px;text-align:left;vertical-align:top}
+.ptab th{font-weight:700}
+.ptab td.r{text-align:right;font-variant-numeric:tabular-nums}
+.ptab tr.tot td{font-weight:700}
+.f{background:var(--fill-bg);color:var(--fill-ink);border-radius:3px;padding:0 2px;cursor:pointer;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.f.miss{background:var(--miss-bg);color:var(--miss-ink);font-weight:600}
+.nomark .f:not(.miss){background:transparent;color:inherit;padding:0}
+.nomark .tag{display:none}
+.nomark .it.tagged-new,.nomark .it.tagged-rev{box-shadow:none}
+.hideoff .it.off,.hideoff h4.off{display:none}
+.sig{margin-top:30px}
+.sig p{margin:0;text-align:left}
+
+/* overlay */
+.ov{position:fixed;inset:0;background:rgba(10,20,18,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.ov.open{display:flex}
+.dlg{background:var(--panel);border-radius:14px;max-width:640px;width:100%;max-height:100%;overflow:auto;padding:26px 28px;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.dlg h2{margin:0 0 4px;font-size:20px;letter-spacing:-.01em}
+.dlg>p{margin:0 0 18px;color:var(--muted)}
+.fwcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}
+.fwc{border:1.5px solid var(--line);border-radius:10px;padding:14px;cursor:pointer;background:var(--panel2);text-align:left}
+.fwc[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.fwc b{display:block;font-size:15px;margin-bottom:4px}
+.fwc span{display:block;color:var(--muted);font-size:12.5px}
+.dlg .row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.dlg .row .fld{flex:1;min-width:200px;margin:0}
+.dlg .act{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:18px;align-items:center}
+.src{font-size:11.5px;color:var(--new);margin-top:3px}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:14px;text-align:center;background:var(--panel2)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop p{margin:6px 0 0;color:var(--muted);font-size:12.5px}
+.dlg.wide{max-width:980px}
+.imp-wrap{overflow:auto;max-height:52vh;border:1px solid var(--line);border-radius:8px}
+.imp{border-collapse:collapse;width:100%;font-size:12.5px}
+.imp th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:7px 8px;font-size:12px;color:var(--muted)}
+.imp td{padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}
+.imp td.mut{color:var(--muted)}
+.imp input{accent-color:var(--accent)}
+.dlg .act.sticky{position:sticky;bottom:-26px;background:var(--panel);padding:12px 0 14px;margin:12px 0 0;border-top:1px solid var(--line);z-index:2}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;z-index:60;display:none;max-width:90vw}
+.toast.on{display:block}
+.mswitch{display:none}
+
+@media (max-width: 920px){
+  .main{grid-template-columns:1fr}
+  .edit,.view{grid-row:1;grid-column:1}
+  body[data-pane="edit"] .view{display:none}
+  body[data-pane="view"] .edit{display:none}
+  .mswitch{display:inline-flex}
+  .paper{padding:34px 22px 34px 44px}
+  .it{margin-left:8px;grid-template-columns:30px 1fr}
+  .it .tg{left:-36px;opacity:1}
+  .it .tag{position:static;display:inline-block;grid-column:2;justify-self:start;margin-top:2px}
+  .legend{display:none}
+  .fwcards{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body data-pane="edit">
+<div class="app">
+  <header class="top">
+    <div class="brand"><b>LLP MRL Drafter</b><span id="brandSub"></span></div>
+    <div class="seg" role="group" aria-label="ICAI entity level" id="topFw"></div>
+    <div class="ctl"><label for="topYe">Year end</label><select id="topYe"></select></div>
+    <button class="blanks" id="blanks" title="Jump to the next placeholder that still needs a value"></button>
+    <div class="seg mswitch" role="group" aria-label="Pane" id="paneSw">
+      <button data-p="edit">Edit</button><button data-p="view">Preview</button>
+    </div>
+    <div class="menu">
+      <button class="btn primary" id="dlBtn" aria-haspopup="true" aria-expanded="false">Download Word</button>
+      <div class="menu-pop" id="dlMenu" role="menu">
+        <button data-dl="main" role="menuitem">LLP audit MRL<small>Letter as .docx</small></button>
+        <button data-dl="xls" role="menuitem">Import financial statements<small>Fill figures from an Excel export</small></button>
+        <button data-dl="copy" role="menuitem">Copy current letter as text<small>Plain text to the clipboard</small></button>
+        <button data-dl="json" role="menuitem">Save inputs as a file<small>.json you can keep per client</small></button>
+        <button data-dl="load" role="menuitem">Load inputs from a file<small>Opens a saved .json</small></button>
+        <button data-dl="clear" role="menuitem">Clear default values<small>Empty every field except level and year end</small></button>
+        <button data-dl="setup" role="menuitem">Change level or start over<small>Reopens the setup screen</small></button>
+      </div>
+      <input type="file" id="loadFile" accept=".json,application/json" hidden>
+    </div>
+  </header>
+  <div class="main">
+    <section class="edit" aria-label="Inputs">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="form" id="form"></div>
+    </section>
+    <section class="view" aria-label="Letter preview">
+      <div class="vbar">
+        <div class="seg" role="group" aria-label="Letter" id="docSw" style="display:none">
+          <button data-d="main">Statutory audit MRL</button><button data-d="caro">CARO 2020 MRL</button>
+        </div>
+        <label><input type="checkbox" id="optMarks" checked> Show markers</label>
+        <label><input type="checkbox" id="optHide"> Hide excluded</label>
+        <div class="legend"><span><i class="f">filled</i></span><span><i class="f miss">blank</i></span><span><i class="tag new">Added</i> suggested</span><span><i class="tag rev">Revised</i> changed from sample</span></div>
+      </div>
+      <div class="scroll" id="scroll"><article class="paper" id="paper"></article></div>
+    </section>
+  </div>
+</div>
+
+<div class="ov" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovT">
+  <div class="dlg">
+    <h2 id="ovT">Set up the LLP letter</h2>
+    <p>Pick the LLP’s level under the ICAI criteria for non-company entities and the year end. They drive the Accounting Standards wording, MSME exemptions and every date. You can change them later from the top bar.</p>
+    <div class="fwcards" id="ovFw">
+      <button class="fwc" data-fw="I"><b>Level I</b><span>Turnover above ₹250 crore or borrowings above ₹50 crore (or listed / bank / insurer) · all AS apply in full</span></button>
+      <button class="fwc" data-fw="II"><b>Level II</b><span>Turnover ₹50–250 crore or borrowings ₹10–50 crore · MSME exemptions</span></button>
+      <button class="fwc" data-fw="III"><b>Level III</b><span>Turnover ₹10–50 crore or borrowings ₹2–10 crore · MSME exemptions</span></button>
+      <button class="fwc" data-fw="IV"><b>Level IV</b><span>Below Level III limits · widest exemptions</span></button>
+    </div>
+    <div class="row">
+      <div class="fld"><label for="ovYe">Financial year end</label><select id="ovYe"></select></div>
+      <div class="fld" id="ovCustomW" hidden><label for="ovCustom">Year-end date</label><input type="date" id="ovCustom"></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label for="ovCo">LLP name</label><input type="text" id="ovCo"></div>
+    </div>
+    <div class="drop" style="margin-bottom:14px"><button class="btn" id="ovImport">Upload financial statements (Excel)</button><p>Optional. Fills the level, year end, LLP details and figures from your exported financials.</p></div>
+    <label class="chk"><input type="checkbox" id="ovBlank"> Clear values left from a previous LLP</label>
+    <div class="act">
+      <span class="hint" style="color:var(--muted);font-size:12.5px">Your inputs stay in this browser only.</span>
+      <button class="btn primary" id="ovGo">Start drafting</button>
+    </div>
+  </div>
+</div>
+<div class="ov" id="impOv" role="dialog" aria-modal="true" aria-labelledby="impT"><div class="dlg wide"></div></div>
+<input type="file" id="xlsFile" accept=".xlsx,.xls,.xlsm,.csv" hidden>
+<input type="file" id="docFile" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+const KEY = "mrl-drafter-llp-v1";
+
+/* ---------------- defaults ---------------- */
+const INV_ROWS = ["Raw Materials (including components)","Work-in-Process","Finished Goods","Stock-in-Trade","Stores and Spare Parts","Loose Tools","Consumables / Others"];
+const LCNRV = "Lower of Cost and Net Realisable Value";
+const DEF = {
+  started:false, fw:"as", level:"IV", fmt:"gn", ye:"2026-03-31", yeCustom:"", firstPeriod:false, periodStart:"", cashFlow:false,
+  company:"", city:"", cin:"", agreementDate:"", suppAgreement:"", policyNote:"1", engDate:"",
+  firm:"J C Ranpura & Co.", firmAddr:"Chartered Accountants\n“Star Avenue”, 1st Floor,\nDr. Radhakrishnan Road,\nOpp. Rajkumar College,\nRajkot - 360 001.", salutation:"Dear Sir,",
+  place:"Rajkot", letterDate:"", sign1:"", sign1Des:"Designated Partner", sign1Din:"", sign2:"", sign2Des:"Designated Partner", sign2Din:"",
+  partners:[["","","Yes","",""],["","","Yes","",""]], remun:"yes", intRate:"12", loansPartners:"yes",
+  cur:"₹", filings:"time", filingNote:"", empBen:"actuarial", leases:"na", taxRegime:"normal", umiss:"none",
+  cashBasis:[["--","--"]], depMethod:"Written Down Value Method", usefulLife:"it",
+  msme:"", msmeInt:"0", dtType:"Liability", dtPL:"Expense", dtAmt:"",
+  inv:[["",LCNRV],["","--"],["",LCNRV],["","--"],["","--"],["","--"],["","--"]],
+  costFormula:"First In First Out (FIFO)", pvDate:"", pvExceptions:[["--"]], cash:"",
+  revalued:false, titleExc:[], wc5:false, wcDiff:[],
+  clBG:"", clClaims:"", clTax:"", clCapex:"", clOther:[], events:"", disc:"", litigation:[],
+  caro:false, lgRows:[], disputed:[], undisputed:[], struck:[],
+  inc:{}, doc:"main", tab:"details", marks:true, hideOff:false
+};
+const BLANK_KEYS = ["company","city","cin","msme","msmeInt","dtAmt","cash","place","sign1","sign1Din"];
+
+let S;
+try { S = JSON.parse(localStorage.getItem(KEY) || "null"); } catch(e) { S = null; }
+S = Object.assign(clone(DEF), S || {});
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} }
+
+/* ---------------- dates & numbers ---------------- */
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function ord(d){ const j=d%10,k=d%100; if(j===1&&k!==11) return d+"st"; if(j===2&&k!==12) return d+"nd"; if(j===3&&k!==13) return d+"rd"; return d+"th"; }
+function parseISO(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||""); if(!m) return null; return new Date(Date.UTC(+m[1],+m[2]-1,+m[3])); }
+function toISO(d){ return d.toISOString().slice(0,10); }
+function fmtDate(iso){ const d=parseISO(iso); if(!d) return ""; return ord(d.getUTCDate())+" "+MONTHS[d.getUTCMonth()]+", "+d.getUTCFullYear(); }
+function addYears(iso,n){ const d=parseISO(iso); if(!d) return ""; d.setUTCFullYear(d.getUTCFullYear()+n); return toISO(d); }
+function addDays(iso,n){ const d=parseISO(iso); if(!d) return ""; d.setUTCDate(d.getUTCDate()+n); return toISO(d); }
+function yeISO(){ return S.ye==="custom" ? (S.yeCustom||"") : S.ye; }
+function startISO(){ if(S.firstPeriod && S.periodStart) return S.periodStart; const y=yeISO(); return y ? addDays(addYears(y,-1),1) : ""; }
+function fyLabel(){ const y=yeISO(); if(!y) return ""; const s=startISO(); return s.slice(0,4)+"-"+y.slice(2,4); }
+function digits(v){ return String(v==null?"":v).replace(/[^0-9.\-]/g,""); }
+function fmtIN(v){ const n=Number(digits(v)); if(!isFinite(n)) return String(v); return n.toLocaleString("en-IN",{maximumFractionDigits:2,minimumFractionDigits:(String(digits(v)).includes(".")?2:0)}); }
+function isBlank(v){ return v==null || String(v).trim()===""; }
+
+/* ---------------- field registry (labels + tab) ---------------- */
+const LABEL = {}, TAB_OF = {};
+
+/* ---------------- standards ---------------- */
+const STD = {
+  inv:["AS 2","Valuation of Inventories","Ind AS 2","Inventories"],
+  tax:["AS 22","Accounting for Taxes on Income","Ind AS 12","Income Taxes"],
+  rpt:["AS 18","Related Party Disclosures","Ind AS 24","Related Party Disclosures"],
+  disc:["AS 24","Discontinuing Operations","Ind AS 105","Non-current Assets Held for Sale and Discontinued Operations"],
+  ppe:["AS 10","Property, Plant and Equipment","Ind AS 16","Property, Plant and Equipment"],
+  prov:["AS 29","Provisions, Contingent Liabilities and Contingent Assets","Ind AS 37","Provisions, Contingent Liabilities and Contingent Assets"],
+  ev:["AS 4","Contingencies and Events Occurring After the Balance Sheet Date","Ind AS 10","Events after the Reporting Period"],
+  invest:["AS 13","Accounting for Investments","Ind AS 109","Financial Instruments"],
+  rev:["AS 9","Revenue Recognition","Ind AS 115","Revenue from Contracts with Customers"],
+  emp:["AS 15","Employee Benefits","Ind AS 19","Employee Benefits"],
+  lease:["AS 19","Leases","Ind AS 116","Leases"],
+  bc:["AS 16","Borrowing Costs","Ind AS 23","Borrowing Costs"],
+  imp:["AS 28","Impairment of Assets","Ind AS 36","Impairment of Assets"],
+  pol:["AS 5","Net Profit or Loss for the Period, Prior Period Items and Changes in Accounting Policies","Ind AS 8","Accounting Policies, Changes in Accounting Estimates and Errors"],
+  eps:["AS 20","Earnings Per Share","Ind AS 33","Earnings per Share"],
+  seg:["AS 17","Segment Reporting","Ind AS 108","Operating Segments"],
+  cf:["AS 3","Cash Flow Statements","Ind AS 7","Statement of Cash Flows"]
+};
+function A(){ return true; }
+function std(k){ const r=STD[k]; return A() ? r[0]+" “"+r[1]+"”" : r[2]+" “"+r[3]+"”"; }
+function stdCode(k){ const r=STD[k]; return A()?r[0]:r[2]; }
+function rulesLong(){
+  if(A()){ const st=startISO(); const yr = (st && st < "2021-04-01") ? "2006" : "2021"; return "the Accounting Standards specified under section 133 of the Act read with the Companies (Accounting Standards) Rules, "+yr; }
+  return "the Indian Accounting Standards (Ind AS) notified under section 133 of the Act read with the Companies (Indian Accounting Standards) Rules, 2015, as amended";
+}
+function rulesShort(){ return A() ? "the Accounting Standards notified under section 133 of the Act" : "the Indian Accounting Standards (Ind AS) notified under section 133 of the Act"; }
+function div(){ return A() ? "Division I of Schedule III" : "Division II of Schedule III"; }
+function isPublic(){ return S.coType==="public" || S.coType==="listed"; }
+
+/* ---------------- segment helpers ---------------- */
+function F(k){ const v=S[k]; if(isBlank(v)) return {k, text:"["+(LABEL[k]||k)+"]", miss:true}; return {k, text:String(v)}; }
+function M(k){ const v=S[k]; if(isBlank(v)) return {k, text:"["+(LABEL[k]||k)+"]", miss:true}; return {k, text:S.cur+" "+fmtIN(v)+"/-"}; }
+function MN(k){ const v=S[k]; if(isBlank(v) || Number(digits(v))===0) return {k, text:"Nil"}; return {k, text:S.cur+" "+fmtIN(v)+"/-"}; }
+function DT(k){ const v=S[k]; if(isBlank(v)) return {k, text:"["+(LABEL[k]||k)+"]", miss:true}; return {k, text:fmtDate(v)}; }
+function YE(){ const y=yeISO(); return y ? {k:"ye", text:fmtDate(y)} : {k:"ye", text:"[Year-end date]", miss:true}; }
+function PY(){ const y=yeISO(); return y ? {k:"ye", text:fmtDate(addYears(y,-1))} : {k:"ye", text:"[Previous year-end]", miss:true}; }
+function B(t){ return {b:t}; }
+function T(strings){ const vals=[].slice.call(arguments,1); const out=[]; strings.forEach(function(str,i){ if(str) out.push(str); if(i<vals.length){ const v=vals[i]; if(v==null||v==="") return; if(Array.isArray(v)) out.push.apply(out,v); else out.push(v); } }); return out; }
+function cell(v){ return isBlank(v) ? "--" : String(v); }
+function mcell(v){ if(isBlank(v)) return "--"; const d=digits(v); return d && !isNaN(Number(d)) ? fmtIN(v) : String(v); }
+function per(){ return S.firstPeriod ? "period" : "year"; }
+
+/* item helpers */
+function P(id, segs, o){ return Object.assign({id, segs}, o||{}); }
+function NEW(name, note){ return {tag:"new", name, note}; }
+function REV(name, note){ return {tag:"rev", name, note}; }
+function opt(a,b){ return Object.assign({}, a, b); }
+
+/* ================= LLP LETTER ================= */
+function lvl(){ return S.level||"IV"; }
+function isMSME(){ return lvl()!=="I"; }
+function cfOn(){ return lvl()==="I" || !!S.cashFlow; }
+function asRef(){ return "the Accounting Standards issued by the Institute of Chartered Accountants of India (ICAI), as applicable to a Level "+lvl()+" non-company entity in terms of the ICAI announcement ‘Applicability of Accounting Standards to Non-company Entities’"; }
+function asShort(){ return "the Accounting Standards issued by the ICAI, as applicable to the LLP"; }
+function fmtRef(){ return S.fmt==="gn" ? "the Guidance Note on Financial Statements of Non-Corporate Entities issued by the ICAI" : "the format of financial statements consistently followed by the LLP"; }
+function buildMain(){
+  const sec=[];
+  const cf=cfOn();
+  const intro=[
+    T`This representation letter is provided in connection with your audit, under section 34 of the Limited Liability Partnership Act, 2008 (the “${B("Act")}”) read with rule 24 of the Limited Liability Partnership Rules, 2009 (the “${B("Rules")}”), of the financial statements of ${F("company")}, ${F("city")} (LLPIN: ${F("cin")}) (hereinafter referred to as the “${B("LLP")}”), comprising the Balance Sheet as at ${YE()}, the Statement of Profit and Loss${cf?" and the Cash Flow Statement":""} for the ${per()} then ended and the notes thereto, for the purpose of expressing an opinion as to whether the financial statements give a true and fair view of the state of affairs of the LLP as at ${YE()} and of its profit or loss${cf?" and its cash flows":""} for the ${per()} ended on that date, in accordance with the accounting principles generally accepted in India, including ${asRef()}.`,
+    T`We, the designated partners, acknowledge our responsibility for the preparation of the financial statements in accordance with the Act, the Rules and the Limited Liability Partnership Agreement (the “${B("LLP Agreement")}”). This responsibility includes the maintenance of proper books of account as required by section 34 of the Act for safeguarding the assets of the LLP and for preventing and detecting frauds and other irregularities; selection and application of appropriate accounting policies; making judgments and estimates that are reasonable and prudent; and design, implementation and maintenance of internal controls relevant to the preparation and presentation of financial statements that give a true and fair view and are free from material misstatement, whether due to fraud or error. In preparing the financial statements, we are responsible for assessing the LLP’s ability to continue as a going concern, disclosing, as applicable, matters related to going concern and using the going concern basis of accounting.`
+  ];
+  const confirm = T`We hereby confirm, to the best of our knowledge and belief, the following representations:`;
+
+  /* 1 policies */
+  const pol=[
+    P("l.pol.1", T`The accounting policies which are material or critical in determining the results of operations for the ${per()} or the financial position are set out in the financial statements and are consistent with those adopted in the previous year, except as stated otherwise. The financial statements are prepared under the historical cost convention, on a going concern basis, in accordance with ${asRef()}, and are presented in ${fmtRef()}.`, REV("Basis of preparation","Ind AS and the Companies (AS) Rules do not apply to LLPs; the ICAI framework for non-company entities applies, and Schedule III is replaced by the ICAI format.")),
+    P("l.pol.2", T`The LLP maintains its books of account at its registered office on accrual basis and according to the double entry system of accounting, as required by section 34 of the Act read with rule 24 of the Rules, except in the following cases where items are recorded on cash basis, the effect of which is not material:`, opt(REV("Books of account","Section 34 and rule 24 replace section 128 of the Companies Act."),{table:{k:"cashBasis", head:["Sr. No.","Particulars of Income","Particulars of Expenses"], w:[12,44,44], rows:(S.cashBasis.length?S.cashBasis:[["",""]]).map((r,i)=>[String(i+1), cell(r[0]), cell(r[1])])}})),
+    P("l.pol.3", T`We confirm that the accounting policies disclosed in Note No. ${F("policyNote")} of the financial statements are true and correct and are being consistently followed by the LLP. There is no deviation in the accounting policies from those disclosed in the financial statements.`),
+    P("l.pol.lvl", isMSME()
+      ? T`As at ${YE()}, the LLP is a Level ${{k:"level",text:lvl()}} entity (Micro, Small or Medium-sized Entity) under the criteria laid down by the ICAI, based on its turnover and borrowings. It has availed the exemptions and relaxations from Accounting Standards available to such entities, and this fact has been disclosed in the financial statements.`
+      : T`The LLP is a Level I entity under the criteria laid down by the ICAI and has complied with all applicable Accounting Standards in their entirety.`, NEW("Entity level (ICAI)","ICAI requires a non-company entity to disclose its level and whether it has availed MSME exemptions.")),
+    P("l.pol.gc", T`The financial statements are prepared on a going concern basis.`),
+    P("l.pol.gc2", T`We have assessed the LLP’s ability to continue as a going concern for a period of at least twelve months from the balance sheet date. We are not aware of any events or conditions, including those arising after the balance sheet date, that may cast significant doubt on the LLP’s ability to continue as a going concern.`, NEW("Going concern assessment","SA 570 (Revised).")),
+    P("l.pol.access", T`We have provided you with:`, {bullets:[
+      T`access to all information of which we are aware that is relevant to the preparation of the financial statements, such as records, documentation and other matters;`,
+      T`additional information that you have requested from us for the purpose of the audit; and`,
+      T`unrestricted access to persons within the LLP from whom you determined it necessary to obtain audit evidence.`]}),
+    P("l.pol.eng", T`We have fulfilled our responsibilities, as set out in the terms of the audit engagement letter dated ${DT("engDate")}, for the preparation of the financial statements in accordance with the applicable financial reporting framework, including their fair presentation.`, NEW("Engagement terms (SA 580)","SA 580 para 10.")),
+    P("l.pol.est", T`Significant assumptions used by us in making accounting estimates are reasonable and appropriately reflect our intent and ability to carry out specific courses of action on behalf of the LLP.`, NEW("Accounting estimates (SA 540)","SA 540 (Revised) and SA 580.")),
+    P("l.pol.umiss", S.umiss==="attached"
+      ? T`We believe the effects of uncorrected misstatements summarised in the accompanying schedule are immaterial, both individually and in the aggregate, to the financial statements taken as a whole.`
+      : T`There are no uncorrected misstatements identified by you that have not been adjusted in the financial statements.`, NEW("Uncorrected misstatements (SA 450)","SA 450 / SA 580 para 14.")),
+    P("l.pol.comp", T`The comparative figures for the year ended ${PY()} have been regrouped or reclassified wherever necessary to conform to the current ${per()}’s classification.`, NEW("Comparatives","AS 5 / presentation of comparatives."))
+  ];
+  sec.push({id:"l.s.pol", title:"Accounting Policies and Basis for Preparation of Financial Statements", items:pol});
+
+  /* 2 partners' funds */
+  const supp = isBlank(S.suppAgreement) ? "" : {k:"suppAgreement", text:" "+S.suppAgreement.trim()};
+  const pf=[
+    P("l.pf.1", T`The LLP Agreement dated ${DT("agreementDate")}${supp}, as amended from time to time, governs the mutual rights and duties of the partners. All changes in the LLP Agreement, including changes in contribution and profit sharing ratio, have been filed with the Registrar in Form 3 within thirty days of the change, as required by section 23 of the Act.`, NEW("LLP Agreement and Form 3","Section 23 of the Act.")),
+    P("l.pf.2", T`The partners of the LLP, their contribution and profit sharing ratio as at ${YE()} are as under:`, opt(NEW("Partners, contribution and PSR","Ties the capital accounts to the LLP Agreement."),{table:{k:"partners", head:["Name of partner","DPIN","Designated partner","Profit sharing ratio","Contribution"], w:[30,16,16,17,21], rows:(S.partners.length?S.partners:[["","","","",""]]).map(r=>[cell(r[0]),cell(r[1]),cell(r[2]),cell(r[3]),mcell(r[4])]), num:[4]}})),
+    P("l.pf.3", T`Admission, retirement or cessation of partners, and changes in designated partners, during the ${per()}, if any, have been notified to the Registrar in Form 4 within thirty days, as required by section 25 of the Act.`, NEW("Changes in partners – Form 4","Section 25 of the Act.")),
+    P("l.pf.4", T`The profit or loss for the ${per()} has been allocated among the partners in their agreed profit sharing ratio as per the LLP Agreement.`, NEW("Allocation of profit","LLP Agreement.")),
+    P("l.pf.5", S.remun==="yes"
+      ? T`Interest on partners’ capital at ${F("intRate")}% per annum and remuneration to working partners have been provided in accordance with the LLP Agreement, and the amounts claimed as deduction are within the limits laid down in section 40(b) of the Income-tax Act, 1961.`
+      : T`No interest on capital or remuneration has been paid or provided to the partners during the ${per()}.`, NEW("Interest and remuneration to partners","Section 40(b) of the Income-tax Act, 1961 and the LLP Agreement.")),
+    P("l.pf.6", T`The balances in the partners’ capital and current accounts as at ${YE()} have been confirmed by the respective partners.`, NEW("Confirmation of partners’ balances","Partner balance confirmations.")),
+    P("l.pf.7", T`Drawings by partners have been debited to their respective current accounts, and no personal expenses of partners have been charged to the Statement of Profit and Loss.`, NEW("Drawings and personal expenses","Partner drawings.")),
+    P("l.pf.8", T`Transfers to and utilisation of reserves, if any, are in accordance with the LLP Agreement.`, REV("Reserves","Reference to the LLP Agreement in place of company statutes."))
+  ];
+  sec.push({id:"l.s.pf", title:"Partners’ Funds", items:pf});
+
+  /* 3 borrowings */
+  const bor=[
+    P("l.bor.1", T`All borrowings have been correctly classified between current and non-current, and between secured and unsecured. Charges created, modified or satisfied on the assets of the LLP have been registered with the Registrar within the prescribed time, where required.`, NEW("Borrowings and charges","Classification and registration of charges.")),
+    P("l.bor.2", T`The LLP has not been declared a wilful defaulter by any bank, financial institution or other lender.`, NEW("Wilful defaulter","Good practice representation.")),
+    P("l.bor.3", T`Borrowings from banks and financial institutions have been used for the specific purposes for which they were taken.`, NEW("End-use of borrowings","Good practice representation."))
+  ];
+  if(S.loansPartners==="yes") bor.push(P("l.bor.p", T`Loans from partners and their relatives are unsecured, have been accepted on terms approved by the partners, and interest thereon, if any, has been provided at the agreed rate.`, NEW("Loans from partners","Partner and relative loans.")));
+  if(S.wc5) bor.push(P("l.bor.wc", S.wcDiff.length
+      ? T`The quarterly returns or statements of current assets filed with banks and financial institutions are in agreement with the books of account, except as under:`
+      : T`The quarterly returns or statements of current assets filed with banks and financial institutions are in agreement with the books of account.`,
+      opt(NEW("Quarterly stock statements","Where working capital limits are secured on current assets."), S.wcDiff.length ? {table:{k:"wcDiff", head:["Quarter","Name of bank","Particulars","As per return","As per books","Reason"], w:[13,17,18,16,16,20], rows:S.wcDiff.map(r=>[cell(r[0]),cell(r[1]),cell(r[2]),mcell(r[3]),mcell(r[4]),cell(r[5])]), num:[3,4]}} : {})));
+  sec.push({id:"l.s.bor", title:"Borrowings", items:bor});
+
+  /* 4 liabilities */
+  sec.push({id:"l.s.liab", title:"Liabilities", items:[
+    P("l.liab.1", T`All the liabilities of the LLP are correctly classified into current and non-current based on the criteria set out in ${fmtRef()}.`, REV("Classification","ICAI format replaces Schedule III.")),
+    P("l.liab.2", T`The requirements of ${asShort()} have been considered and, where material, complied with while preparing the financial statements.`)
+  ]});
+
+  /* 5 other liabilities */
+  const ol=[
+    P("l.ol.1", T`In our opinion, the provision for all the known liabilities, including all losses expected to arise from events which had occurred by ${YE()}, is adequate and not in excess of the amount reasonably necessary.`),
+    P("l.ol.2", T`Balances of sundry creditors and other liabilities are subject to confirmation and reconciliation, if any. Consequential adjustments, if any, will be given effect in the books of account in the year of such adjustment and, in our view, will not have any material impact on the financial statements for the ${per()} ended ${YE()}.`),
+    P("l.ol.3", T`Provisions, being liabilities which can be measured only by using a substantial degree of estimation, have been recognised in accordance with ${std("prov")}.`),
+    P("l.ol.msme", T`The LLP has circulated a request letter to its suppliers to ascertain whether they are Micro or Small Enterprises as defined under the Micro, Small and Medium Enterprises Development Act, 2006 (“MSMED Act”). To the best of our knowledge and based on confirmations received, the amount due to Micro and Small Enterprises as at ${YE()} is ${M("msme")}. The interest paid or payable under section 16 of the MSMED Act for delayed payments is ${MN("msmeInt")}, and the disclosures required under section 22 of the MSMED Act have been made.`, REV("MSME dues","Section 22 disclosure applies to every buyer whose accounts are audited, including LLPs; see also s.43B(h) of the Income-tax Act.")),
+    P("l.ol.age", T`The ageing of trade payables, distinguishing MSME and other dues, has been disclosed as required by ${fmtRef()}.`, NEW("Trade payables ageing","ICAI format for non-corporate entities.")),
+    P("l.ol.adv", T`Advances received from customers represent sums received in the normal course of business either for supply of goods or for services to be rendered and are not in the nature of loans.`),
+    P("l.ol.est", T`There is no major change in, or deviation from, any accounting estimate applied by the LLP as compared to the previous year.`)
+  ];
+  if(S.empBen==="actuarial") ol.push(P("l.ol.emp", T`Provision for employee benefits, including gratuity and compensated absences, has been made in accordance with ${std("emp")}${isMSME()?", availing the relaxations available to a Level "+lvl()+" entity where applicable":" on the basis of an actuarial valuation"}, and the assumptions used are reasonable.`, NEW("Employee benefits","AS 15 – MSMEs may use relaxations available under the ICAI announcement.")));
+  sec.push({id:"l.s.ol", title:"Other Liabilities & Provisions", items:ol});
+
+  /* 6 tax */
+  const tx=[ P("l.tx.1", T`Under the provisions of ${std("tax")}, the LLP has recognised deferred tax ${{k:"dtPL",text:S.dtPL==="Income"?"income":"expense"}} for the ${per()}, and the carrying value of the Deferred Tax ${{k:"dtType",text:S.dtType}} as on ${YE()} is ${M("dtAmt")}.`) ];
+  if(S.dtType==="Asset") tx.push(P("l.tx.dta", T`Deferred tax assets have been recognised only to the extent that there is reasonable certainty, and in respect of unabsorbed depreciation or carry forward of losses, virtual certainty supported by convincing evidence, that sufficient future taxable income will be available against which they can be realised.`, NEW("Recognition of deferred tax asset","AS 22.")));
+  tx.push(P("l.tx.cur", S.taxRegime==="amt"
+    ? T`Provision for current tax has been computed as applicable to a firm under the Income-tax Act, 1961, including alternate minimum tax under section 115JC, and is adequate. AMT credit, if any, has been recognised only to the extent there is convincing evidence that it will be utilised within the permitted period.`
+    : T`Provision for current tax has been computed as applicable to a firm under the Income-tax Act, 1961 and is adequate.`, NEW("Current tax","An LLP is taxed as a firm; AMT under section 115JC may apply.")));
+  sec.push({id:"l.s.tx", title:"Deferred Tax and Current Tax", items:tx});
+
+  /* 7 assets */
+  sec.push({id:"l.s.as", title:"Assets", items:[
+    P("l.as.1", T`All the assets of the LLP are correctly classified into current and non-current based on the criteria set out in ${fmtRef()}.`, REV("Classification","ICAI format replaces Schedule III.")),
+    P("l.as.2", T`The LLP has a satisfactory title to all the assets stated in the financial statements, and there are no liens, mortgages or other encumbrances on the assets of the LLP except those disclosed in the financial statements.`),
+    P("l.as.3", T`In our opinion, current assets including loans and advances have a value on realisation in the ordinary course of business at least equal to the amount at which they are stated.`)
+  ]});
+
+  /* 8 PPE */
+  const ppe=[
+    P("l.ppe.1", T`All items of property, plant and equipment (PPE) are in usable condition and are classified correctly.`),
+    P("l.ppe.reval", S.revalued ? T`The PPE revalued during the ${per()} have been revalued on the basis of a valuation by an independent valuer, and the basis of revaluation has been disclosed.` : T`None of the PPE or intangible assets has been revalued during the ${per()}.`),
+    P("l.ppe.2", T`The net book values at which PPE are stated in the Balance Sheet are arrived at:`, {bullets:[
+      T`after taking into account all capital expenditure on additions thereto, but no expenditure properly chargeable to revenue;`,
+      T`after providing adequate depreciation on PPE during the ${per()};`,
+      T`after eliminating the cost and accumulated depreciation relating to items sold, discarded, demolished or destroyed; and`,
+      T`after attributing borrowing costs on acquisition of qualifying assets as part of their cost in accordance with ${std("bc")}, where applicable.`]}),
+    P("l.ppe.dep", S.usefulLife==="it"
+      ? T`Depreciation on PPE is provided on the ${{k:"depMethod",text:S.depMethod}} at the rates prescribed under the Income-tax Act, 1961, which in our opinion result in a systematic allocation of the depreciable amount over the useful lives of the assets as required by ${std("ppe")}.`
+      : T`Depreciation on PPE is provided on the ${{k:"depMethod",text:S.depMethod}} over the useful lives of the assets as estimated by us, in accordance with ${std("ppe")}.`, REV("Depreciation","Schedule II does not apply to LLPs; AS 10 requires systematic allocation over useful life.")),
+    P("l.ppe.review", T`The residual values, useful lives and methods of depreciation of PPE have been reviewed at the end of the ${per()} in accordance with ${std("ppe")}.`, NEW("Annual review","AS 10.")),
+    P("l.ppe.cap", T`None of the items which are in the nature of revenue expenditure have been capitalised, and none of the items which are in the nature of capital expenditure have been charged to the Statement of Profit and Loss.`),
+    P("l.ppe.title", S.titleExc.length
+      ? T`The title deeds of all immovable properties are held in the name of the LLP, except the following:`
+      : T`The title deeds of all immovable properties (other than properties taken on lease where the lease agreements are duly executed in favour of the LLP) are held in the name of the LLP.`,
+      opt(NEW("Title deeds","Property held in the name of the LLP."), S.titleExc.length ? {table:{k:"titleExc", head:["Description","Gross carrying value","Held in the name of","Partner / relative?","Period held","Reason"], w:[18,14,17,19,13,19], rows:S.titleExc.map(r=>[cell(r[0]),mcell(r[1]),cell(r[2]),cell(r[3]),cell(r[4]),cell(r[5])]), num:[1]}} : {})),
+    P("l.ppe.imp", T`There is no indication that any asset may be impaired, and accordingly no impairment loss is required to be recognised in accordance with ${std("imp")}${isMSME()?", applying the relaxations available to MSMEs where availed":""}, other than as recognised in the financial statements.`, NEW("Impairment","AS 28.")),
+    P("l.ppe.benami", T`No proceedings have been initiated or are pending against the LLP for holding any benami property under the Benami Transactions (Prohibition) Act, 1988.`, NEW("Benami property","Good practice representation."))
+  ];
+  if(S.leases==="yes") ppe.splice(7,0,P("l.ppe.lease", T`All lease arrangements have been identified, classified as finance or operating leases, and accounted for in accordance with AS 19 “Leases”${isMSME()?", availing the disclosure relaxations available to MSMEs where applicable":""}.`, NEW("Leases","AS 19.")));
+  sec.push({id:"l.s.ppe", title:"Property, Plant and Equipment (PPE)", items:ppe});
+
+  /* 9 investments */
+  sec.push({id:"l.s.inv", title:"Investments", items:[
+    P("l.inv.1", T`Current investments consist only of investments which are by their nature readily realisable and intended to be held for not more than one year from the date on which they are made. All other investments have been classified as long-term investments.`),
+    P("l.inv.2", T`Current investments have been valued at the lower of cost and fair value, determined on an individual investment basis, in accordance with AS 13 “Accounting for Investments”.`),
+    P("l.inv.3", T`Long-term investments have been valued at cost, except that any diminution, other than temporary, in their value has been provided for.`),
+    P("l.inv.own", T`All the investments appearing in the Balance Sheet belong to the LLP and are held in its name, and do not include any investments held on behalf of any other person or in the name of any partner.`, REV("Ownership","Investments held in partners’ names are a common LLP issue."))
+  ]});
+
+  /* 10 loans */
+  sec.push({id:"l.s.ln", title:"Loans & Advances", items:[
+    P("l.ln.1", T`All loans and advances are considered good and fully recoverable except those which are specifically shown as doubtful in the financial statements. Adequate provision has been made for bad and doubtful loans and advances.`),
+    P("l.ln.2", T`Loans and advances have been classified in the financial statements as:`, {bullets:[T`secured, considered good;`, T`unsecured, considered good; and`, T`doubtful.`]}),
+    P("l.ln.3", T`Loans and advances to partners, their relatives, and entities in which partners are interested have been disclosed separately in the financial statements, and there are no other such loans or advances.`, NEW("Loans to partners","Disclosure of partner-related balances.")),
+    P("l.ln.4", T`Adequate provision for interest has been made wherever applicable.`),
+    P("l.ln.5", T`Balances of loans and advances are subject to confirmation and reconciliation. Consequential adjustments, if any, will be given effect in the books of account in the year of such adjustment.`)
+  ]});
+
+  /* 11 inventories */
+  let tot=0; const invRows=INV_ROWS.map((n,i)=>{ const v=S.inv[i][0]; const d=Number(digits(v)); if(!isBlank(v)&&isFinite(d)) tot+=d; return [n, isBlank(v)?"-":fmtIN(v)]; });
+  invRows.push([{b:"Total"},{k:"inv",text:fmtIN(tot)}]);
+  sec.push({id:"l.s.invt", title:"Inventories", items:[
+    P("l.invt.1", T`Inventories at the ${per()}-end consisted of the following:`, {table:{k:"inv", head:["Particulars","Value ("+(S.cur==="₹"?"₹":"Rs.")+")"], w:[65,35], rows:invRows, num:[1], tot:true}}),
+    P("l.invt.2", S.pvDate
+      ? T`All quantities were determined by actual physical count taken on ${DT("pvDate")} under our supervision and in accordance with written instructions, and have been rolled forward to the balance sheet date, except in the following cases:`
+      : T`All quantities were determined by actual physical count taken under our supervision and in accordance with written instructions, except in the following cases:`,
+      {table:{k:"pvExceptions", head:["Sr. No.","Particulars"], w:[12,88], rows:(S.pvExceptions.length?S.pvExceptions:[[""]]).map((r,i)=>[String(i+1),cell(r[0])])}}),
+    P("l.invt.3", T`Material discrepancies noticed on physical verification of inventories as compared to book records have been properly dealt with in the books of account.`),
+    P("l.invt.4", T`All goods included in inventory are the property of the LLP; none of the goods are held as consignee for others or as bailee, and none are subject to any charge except as disclosed.`),
+    P("l.invt.5", T`All inventories owned by the LLP, wherever located, including goods-in-transit, have been recorded.`),
+    P("l.invt.7", T`Inventories have been valued on the following basis in accordance with ${std("inv")}:`, {table:{k:"inv", head:["Particulars","Basis"], w:[50,50], rows:INV_ROWS.map((n,i)=>[n, S.inv[i][1]||"--"])}}),
+    P("l.invt.8", T`Adequate provisions have been made in respect of excess, slow-moving, damaged or obsolete inventories, and no item of inventory has a net realisable value lower than the amount at which it is included.`),
+    P("l.invt.10", T`The basis of valuation of inventories is the same as that used in the previous year.`),
+    P("l.invt.12", T`The cost of inventories has been determined using the ${{k:"costFormula",text:S.costFormula}} cost formula.`)
+  ]});
+
+  /* 12 receivables */
+  sec.push({id:"l.s.tr", title:"Trade Receivables", items:[
+    P("l.tr.1", T`All trade receivables, including receivables outstanding for more than six months, are considered good and fully recoverable with the exception of those specifically shown as doubtful. Adequate provision has been made for bad and doubtful debts.`),
+    P("l.tr.2", T`The ageing of trade receivables has been disclosed as required by ${fmtRef()}.`, REV("Ageing","ICAI format.")),
+    P("l.tr.3", T`Trade receivables have been classified as secured, considered good; unsecured, considered good; and doubtful.`),
+    P("l.tr.4", T`Amounts due from partners, their relatives, and entities in which partners are interested have been disclosed separately.`, REV("Partner-related dues","Replaces the company ‘directors and officers’ disclosure.")),
+    P("l.tr.5", T`Balances of trade receivables are subject to confirmation and reconciliation. Consequential adjustments, if any, will be given effect in the books of account in the year of such adjustment.`)
+  ]});
+
+  /* 13 cash */
+  sec.push({id:"l.s.cash", title:"Cash & Cash Equivalents and Other Bank Balances", items:[
+    P("l.cash.2", T`The total cash balance in hand of the LLP as on ${YE()} was ${M("cash")}, and the cash balance was lying with the authorised person as on the balance sheet date.`),
+    P("l.cash.3", T`There were no remittances in transit as on the date of the Balance Sheet.`),
+    P("l.cash.4", T`Bank balances as per the books of account match the balances as per bank statements and, wherever they do not, a reconciliation statement has been prepared. Items appearing in the bank reconciliation have been cleared subsequent to the balance sheet date.`),
+    P("l.cash.5", T`We confirm that:`, {bullets:[
+      T`there are no earmarked balances or money held as margin money or security against borrowings, guarantees, etc., other than those disclosed in the financial statements;`,
+      T`there are no restrictions on the use of cash or cash equivalents other than those disclosed; and`,
+      T`no bank account of the LLP is held in the name of any partner, and no bank account of any partner is used for the business of the LLP.`]}, )
+  ]});
+
+  /* 14 P&L */
+  const pl=[
+    P("l.pl.1", T`The Statement of Profit and Loss has been prepared in accordance with ${fmtRef()} and ${asShort()}.`),
+    P("l.pl.2", T`Except as disclosed in the financial statements, the results for the ${per()} were not materially affected by:`, {bullets:[T`transactions of a nature not usually undertaken by the LLP;`, T`circumstances of an exceptional or non-recurring nature;`, T`charges or credits relating to prior years; or`, T`changes in accounting policies.`]}),
+    P("l.pl.3", T`All expenses and income have been accounted on accrual basis and adequate provision has been made thereof.`),
+    P("l.pl.rem", T`Interest on capital, remuneration and share of profit of partners have been shown separately in the financial statements.`, REV("Partners’ remuneration","Replaces managerial remuneration under section 197, which does not apply to LLPs.")),
+    P("l.pl.5", T`All unusual, extraordinary and prior period items have been disclosed separately in the financial statements in accordance with AS 5.`),
+    P("l.pl.rev", T`Revenue has been recognised in accordance with ${std("rev")}.`, NEW("Revenue recognition","AS 9."))
+  ];
+  if(!isMSME()) pl.push(P("l.pl.seg", T`Segment information has been disclosed in accordance with ${std("seg")}.`, NEW("Segment reporting","AS 17 applies to Level I entities only.")));
+  sec.push({id:"l.s.pl", title:"Statement of Profit and Loss", items:pl});
+
+  /* 15 general */
+  const fil = S.filings==="time"
+    ? T`The LLP has filed its Annual Return in Form 11 and its Statement of Account and Solvency in Form 8 for the previous financial year, and all other forms required to be filed with the Registrar under the Act and the Rules, within the prescribed time.`
+    : S.filings==="late"
+      ? T`The LLP has filed its Annual Return in Form 11 and its Statement of Account and Solvency in Form 8 for the previous financial year, and other forms required to be filed with the Registrar, with additional fees where filed after the due date. Details: ${F("filingNote")}`
+      : T`The following filings required under the Act and the Rules are pending, and the consequences have been considered in the financial statements: ${F("filingNote")}`;
+  const gen=[
+    P("l.gen.1", T`We have made available to you all the books of account, statutory registers, records and related data (including computer-generated records), minutes of partners’ meetings and resolutions passed by the partners.`, REV("Records","Partners’ meetings and resolutions in place of board minutes.")),
+    P("l.gen.2", T`The books of account and other records of the LLP are maintained at its registered office and are preserved for a period of eight years from the end of the financial year to which they relate, as required by section 34 of the Act read with rule 24 of the Rules. All the transactions of the LLP have been fully recorded in the books of account.`, NEW("Place and preservation of books","Section 34 of the Act and rule 24.")),
+    P("l.gen.3", T`There are no transactions that have not been properly recorded in the accounting records underlying the financial statements.`),
+    P("l.gen.fraud", T`We have disclosed to you the results of our assessment of the risk that the financial statements may be materially misstated as a result of fraud. We have no knowledge of any fraud or suspected fraud affecting the LLP involving partners, employees who have significant roles in internal control, or others where the fraud could have a material effect on the financial statements, nor of any allegations of fraud or suspected fraud communicated by employees, former employees, regulators or others.`, NEW("Fraud (SA 240)","SA 240 para 40.")),
+    P("l.gen.5", T`The LLP has complied with all aspects of contractual agreements, including the LLP Agreement, that could have a material effect on the financial statements in the event of non-compliance. There has been no non-compliance with requirements of regulatory authorities that could have a material effect on the financial statements.`),
+    P("l.gen.6", T`We have no plans or intentions that may materially affect the carrying value or classification of assets and liabilities reflected in the financial statements.`),
+    P("l.gen.7", T`There have been no material violations of the Act, the Rules or other laws and regulations applicable to the LLP, the effect of which would result in an adjustment to, or disclosure in, the financial statements.`),
+    P("l.gen.fil", fil, NEW("Filings with the Registrar","Forms 8 and 11 under the Rules; rule 24(8) requires audit where turnover exceeds ₹40 lakh or contribution exceeds ₹25 lakh.")),
+    P("l.gen.solv", T`The LLP is able to pay its debts in full as they become due in the normal course of business, and the Statement of Account and Solvency in Form 8 for the ${per()} ended ${YE()} will be signed by the designated partners on that basis.`, NEW("Solvency","Declaration of solvency in Form 8.")),
+    P("l.gen.dp", T`The LLP has at least two designated partners who are individuals, of whom at least one is resident in India, as required by section 7 of the Act. Every designated partner holds a valid Designated Partner Identification Number (DPIN) and has given consent to act as designated partner in Form 9.`, NEW("Designated partners","Section 7 of the Act.")),
+    P("l.gen.tax", T`All returns under the goods and services tax and income-tax (TDS/TCS) laws have been filed, and the turnover and tax amounts reported therein reconcile with the books of account, except as disclosed to you.`, NEW("Tax returns","GST and TDS/TCS reconciliation."))
+  ];
+  sec.push({id:"l.s.gen", title:"General", items:gen});
+
+  /* 16 contingent */
+  const cl = [
+    isBlank(S.clBG) ? T`There is no counter guarantee given to banks against bank guarantees.` : T`Counter guarantees given to banks against bank guarantees: ${M("clBG")}.`,
+    isBlank(S.clClaims) ? T`There are no claims against the LLP not acknowledged as debts.` : T`Claims against the LLP not acknowledged as debts: ${M("clClaims")}.`,
+    isBlank(S.clTax) ? T`There is no disputed income-tax / goods and services tax liability contested in appeal.` : T`Disputed income-tax / goods and services tax liability contested in appeal: ${M("clTax")}.`,
+    isBlank(S.clCapex) ? T`There are no capital commitments on account of contracts remaining to be executed on capital account and not provided for.` : T`Estimated amount of contracts remaining to be executed on capital account and not provided for: ${M("clCapex")}.`
+  ].concat(S.clOther.filter(r=>!isBlank(r[0])).map(r=>T`${{k:"clOther",text:r[0]}}: ${{k:"clOther",text:isBlank(r[1])?"--":S.cur+" "+fmtIN(r[1])+"/-"}}.`));
+  sec.push({id:"l.s.cl", title:"Contingent Liabilities and Commitments", items:[
+    P("l.cl.1", T`We have disclosed in the notes to accounts all the contingent liabilities and commitments as at ${YE()} in accordance with ${std("prov")}. The details thereof are as under:`, {bullets:cl}),
+    P("l.cl.ca", T`Contingent assets, if any, have not been recognised in the financial statements.`, NEW("Contingent assets","AS 29."))
+  ]});
+
+  /* 17-19 */
+  sec.push({id:"l.s.ev", title:"Events Occurring After the Balance Sheet Date", items:[
+    P("l.ev.1", isBlank(S.events)
+      ? T`There have been no events subsequent to the balance sheet date which require adjustment of, or disclosure in, the financial statements or notes thereto, in accordance with ${std("ev")}.`
+      : T`There have been no events subsequent to the balance sheet date which require adjustment of, or disclosure in, the financial statements in accordance with ${std("ev")}, other than the following, which have been appropriately dealt with: ${F("events")}`)
+  ]});
+  sec.push({id:"l.s.disc", title:"Discontinuing Operations", items:[
+    P("l.disc.1", isBlank(S.disc)
+      ? T`During the ${per()}, none of the businesses of the LLP has been discontinued, and hence no disclosures are required under ${std("disc")}.`
+      : T`The following operations have been discontinued, and the disclosures required by ${std("disc")}, to the extent applicable to the LLP, have been made: ${F("disc")}`)
+  ]});
+  sec.push({id:"l.s.rp", title:"Related Party Disclosures", items:[
+    P("l.rp.0", T`We have disclosed to you the identity of the LLP’s related parties, including partners, their relatives and entities in which partners have significant influence, and all related party relationships and transactions of which we are aware.`, NEW("Identity of related parties (SA 550)","SA 550.")),
+    P("l.rp.1", T`Transactions with related parties have been properly recorded and${lvl()==="IV"?" disclosed in the financial statements to the extent required for a Level IV entity":" disclosed in the financial statements in accordance with "+std("rpt")}.`, REV("Related party standard","AS 18 applicability depends on the entity level.")),
+    P("l.rp.2", T`Transactions with partners, their relatives and entities in which partners are interested are in accordance with the LLP Agreement, have been approved by the partners where required, and are on terms not prejudicial to the LLP.`, NEW("Transactions with partners","LLP Agreement."))
+  ]});
+
+  /* 20 other matters */
+  sec.push({id:"l.s.oth", title:"Other Matters", items:[
+    P("l.oth.lit", S.litigation.length
+      ? T`The pending litigations of the LLP are as under, and the impact, if any, of such litigations on its financial position has been disclosed in the financial statements:`
+      : T`There are no pending litigations which would impact the financial position of the LLP.`,
+      S.litigation.length ? {table:{k:"litigation", head:["Particulars","Forum","Amount","Status"], w:[40,22,16,22], rows:S.litigation.map(r=>[cell(r[0]),cell(r[1]),mcell(r[2]),cell(r[3])]), num:[2]}} : {}),
+    P("l.oth.ltc", T`The LLP did not have any long-term contracts, including derivative contracts, for which there were any material foreseeable losses.`)
+  ]});
+
+  return {kind:"main", subject:"Management Representation Letter.", intro, confirm, sections:sec};
+}
+function buildCaro(){ return {kind:"caro", subject:"", intro:[], confirm:null, sections:[]}; }
+
+/* ---------------- inclusion ---------------- */
+function included(it){ return S.inc[it.id]!==undefined ? S.inc[it.id] : !it.defOff; }
+function refSegs(){
+  return S.firstPeriod
+    ? T`Statutory Audit of ${F("company")}, ${F("city")} [LLPIN: ${F("cin")}] for the financial period from ${DT("periodStart")} to ${YE()}.`
+    : T`Statutory Audit of ${F("company")}, ${F("city")} [LLPIN: ${F("cin")}] for the financial year ended on ${YE()}.`;
+}
+
+/* ---------------- HTML render ---------------- */
+function esc(t){ return String(t).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+let MISSING=[];
+function segHTML(segs, counting){
+  return segs.map(sg=>{
+    if(typeof sg==="string") return esc(sg);
+    if(sg.b) return "<b>"+esc(sg.b)+"</b>";
+    if(sg.miss && counting) MISSING.push(sg.k);
+    return '<span class="f'+(sg.miss?" miss":"")+'" data-k="'+esc(sg.k)+'" tabindex="0" role="button">'+esc(sg.text)+"</span>";
+  }).join("");
+}
+function cellHTML(c, counting){ return Array.isArray(c) ? segHTML(c,counting) : (typeof c==="object" ? segHTML([c],counting) : esc(c)); }
+const ROMAN=["i","ii","iii","iv","v","vi","vii","viii","ix","x","xi","xii"];
+function letter(n){ return "("+String.fromCharCode(97+n%26)+(n>=26?String.fromCharCode(97+Math.floor(n/26)-1):"")+")"; }
+
+function renderPaper(){
+  const m = S.doc==="caro" ? buildCaro() : buildMain();
+  MISSING=[];
+  const h=[];
+  if(S.doc==="caro" && !S.caro){
+    h.push('<p style="text-align:center;color:var(--muted);margin:40px 0">The CARO letter is switched off because CARO 2020 was marked not applicable. Turn it on in the CARO tab.</p>');
+    document.getElementById("paper").innerHTML=h.join(""); updateBlanks(); return;
+  }
+  h.push('<div class="addr"><p>To,</p><p><b>'+segHTML([F("firm")],true).replace(/^<b>|<\/b>$/g,"")+"</b></p>");
+  if(isBlank(S.firmAddr)) h.push("<p>"+segHTML([F("firmAddr")],true)+"</p>");
+  else String(S.firmAddr).split("\n").filter(l=>l.trim()).forEach(l=>{ h.push('<p><span class="f" data-k="firmAddr" tabindex="0" role="button">'+esc(l)+"</span></p>"); });
+  h.push("</div><p style='margin-top:14px'>"+segHTML([F("salutation")],true)+"</p>");
+  h.push('<div class="ref"><b>Ref:</b><span>'+segHTML(refSegs(),true)+'</span><b>Sub:</b><span>'+esc(m.subject)+"</span></div>");
+  m.intro.forEach(p=>h.push("<p>"+segHTML(p,true)+"</p>"));
+  if(m.confirm) h.push("<p>"+segHTML(m.confirm,true)+"</p>");
+  let sn=0;
+  m.sections.forEach(sec=>{
+    const any = sec.items.some(included);
+    if(any) sn++;
+    h.push(sec.no ? '<h4 class="'+(any?"":"off")+'"><span>Clause 3('+sec.no+') – '+esc(sec.title)+"</span></h4>" : '<h4 class="'+(any?"":"off")+'"><span>'+(any?sn+".":"–")+"</span><span>"+esc(sec.title)+"</span></h4>");
+    let n=0;
+    sec.items.forEach(it=>{
+      const on=included(it);
+      const no = on ? letter(n++) : "";
+      h.push('<div class="it'+(on?"":" off")+(it.tag?" tagged-"+it.tag:"")+'" data-id="'+it.id+'">');
+      h.push('<button class="tg" data-tg="'+it.id+'" aria-pressed="'+on+'" title="'+(on?"Exclude this paragraph":"Include this paragraph")+'">'+(on?"✓":"+")+"</button>");
+      h.push('<span class="no">'+no+'</span><div class="bd"><p>'+segHTML(it.segs,on)+"</p>");
+      if(it.bullets){ h.push('<ul class="bl">'+it.bullets.map((b,i)=>"<li><span>("+ROMAN[i]+")</span><span>"+segHTML(b,on)+"</span></li>").join("")+"</ul>"); }
+      if(it.table){ const t=it.table;
+        h.push('<div class="ptab-wrap"><table class="ptab"><thead><tr>'+t.head.map(x=>"<th>"+esc(x)+"</th>").join("")+"</tr></thead><tbody>");
+        t.rows.forEach((r,ri)=>{ const tot = t.tot && ri===t.rows.length-1; h.push("<tr"+(tot?' class="tot"':"")+">"+r.map((c,ci)=>"<td"+((t.num||[]).includes(ci)?' class="r"':"")+">"+(typeof c==="string" && !tot ? '<span class="f" data-k="'+t.k+'" style="background:transparent;color:inherit;padding:0">'+esc(c)+"</span>" : cellHTML(c,on))+"</td>").join("")+"</tr>"); });
+        h.push("</tbody></table></div>"); }
+      h.push("</div>");
+      if(it.tag) h.push('<span class="tag '+it.tag+'" title="'+esc(it.name+": "+it.note)+'">'+(it.tag==="new"?"Added":"Revised")+"</span>");
+      h.push("</div>");
+    });
+  });
+  h.push('<div class="sig"><p>For <b>'+segHTML([F("company")],true)+"</b></p><br><br>");
+  h.push("<p>"+segHTML([F("sign1")],true)+"</p><p>"+segHTML([F("sign1Des")],true)+"</p>"+(isBlank(S.sign1Din)?"":"<p>DPIN: "+segHTML([F("sign1Din")],true)+"</p>"));
+  if(!isBlank(S.sign2)){ h.push("<br><p>"+segHTML([F("sign2")],true)+"</p><p>"+segHTML([F("sign2Des")],true)+"</p>"+(isBlank(S.sign2Din)?"":"<p>DPIN: "+segHTML([F("sign2Din")],true)+"</p>")); }
+  h.push("<br><p>Place: "+segHTML([F("place")],true)+"</p><p>Date: "+segHTML([DT("letterDate")],true)+"</p></div>");
+  document.getElementById("paper").innerHTML=h.join("");
+  updateBlanks();
+}
+function updateBlanks(){
+  const b=document.getElementById("blanks");
+  const n=MISSING.length;
+  b.textContent = n ? n+" blank"+(n>1?"s":"")+" to fill" : "All placeholders filled";
+  b.className = "blanks"+(n?"":" ok");
+}
+
+/* ---------------- plain text ---------------- */
+function segText(segs){ return segs.map(sg=>typeof sg==="string"?sg:(sg.b||sg.text)).join(""); }
+function cellText(c){ return Array.isArray(c)?segText(c):(typeof c==="object"?segText([c]):String(c)); }
+function plainText(m){
+  const L=["To,",S.firm||"[Firm]"].concat(String(S.firmAddr||"").split("\n"),["",S.salutation||"","","Ref: "+segText(refSegs()),"Sub: "+m.subject,""]);
+  m.intro.forEach(p=>{L.push(segText(p),"");});
+  if(m.confirm) L.push(segText(m.confirm),"");
+  let sn=0;
+  m.sections.forEach(sec=>{ const its=sec.items.filter(included); if(!its.length) return; sn++; L.push(sec.no?"Clause 3("+sec.no+") – "+sec.title:sn+". "+sec.title,"");
+    its.forEach((it,i)=>{ L.push("   "+letter(i)+" "+segText(it.segs));
+      (it.bullets||[]).forEach((b,j)=>L.push("        ("+ROMAN[j]+") "+segText(b)));
+      if(it.table){ L.push("        "+it.table.head.join(" | ")); it.table.rows.forEach(r=>L.push("        "+r.map(cellText).join(" | "))); }
+      L.push(""); }); });
+  L.push("For "+(S.company||"[LLP]"),"","",S.sign1||"",S.sign1Des||"");
+  if(!isBlank(S.sign1Din)) L.push("DPIN: "+S.sign1Din);
+  if(!isBlank(S.sign2)){ L.push("",S.sign2,S.sign2Des||""); if(!isBlank(S.sign2Din)) L.push("DPIN: "+S.sign2Din); }
+  L.push("","Place: "+(S.place||""),"Date: "+(S.letterDate?fmtDate(S.letterDate):""));
+  return L.join("\n");
+}
+
+/* ---------------- DOCX ---------------- */
+function docxFor(m){
+  const D=window.docx;
+  const J=D.AlignmentType.JUSTIFIED;
+  const runs=segs=>segs.map(sg=> typeof sg==="string" ? new D.TextRun(sg) : sg.b ? new D.TextRun({text:sg.b,bold:true}) : new D.TextRun(sg.miss?{text:sg.text,highlight:"yellow"}:{text:sg.text}));
+  const out=[];
+  const line=(c,o)=>new D.Paragraph(Object.assign({children:c, spacing:{after:0}},o||{}));
+  out.push(line([new D.TextRun("To,")]));
+  out.push(line([new D.TextRun({text:S.firm||"[Firm name]",bold:true, highlight:isBlank(S.firm)?"yellow":undefined})]));
+  String(S.firmAddr||"").split("\n").forEach(l=>out.push(line([new D.TextRun(l)])));
+  out.push(new D.Paragraph({children:[]}));
+  out.push(new D.Paragraph({children:runs([F("salutation")])}));
+  out.push(new D.Paragraph({indent:{left:1440,hanging:720}, alignment:J, children:[new D.TextRun({text:"Ref:",bold:true}),new D.TextRun({children:[new D.Tab()]})].concat(runs(refSegs()))}));
+  out.push(new D.Paragraph({indent:{left:1440,hanging:720}, children:[new D.TextRun({text:"Sub:",bold:true}),new D.TextRun({children:[new D.Tab(),m.subject]})]}));
+  m.intro.forEach(p=>out.push(new D.Paragraph({alignment:J, children:runs(p)})));
+  if(m.confirm) out.push(new D.Paragraph({alignment:J, children:runs(m.confirm)}));
+  const B1=1440, CW=9026;
+  let sn=0;
+  m.sections.forEach(sec=>{
+    const its=sec.items.filter(included); if(!its.length) return; sn++;
+    out.push(new D.Paragraph({keepNext:true, indent:sec.no?{left:0}:{left:567,hanging:567}, spacing:{before:200,after:120}, children:[new D.TextRun(sec.no?{bold:true,text:"Clause 3("+sec.no+") – "+sec.title}:{bold:true,children:[sn+".",new D.Tab(),sec.title]})]}));
+    its.forEach((it,i)=>{
+      out.push(new D.Paragraph({alignment:J, indent:{left:B1,hanging:567}, children:[new D.TextRun({children:[letter(i),new D.Tab()]})].concat(runs(it.segs))}));
+      (it.bullets||[]).forEach((b,j)=>out.push(new D.Paragraph({alignment:J, indent:{left:B1+567,hanging:567}, children:[new D.TextRun({children:["("+ROMAN[j]+")",new D.Tab()]})].concat(runs(b))})));
+      if(it.table){
+        const t=it.table, total=CW-B1, w=t.w.map(x=>Math.round(total*x/100));
+        const bd={style:D.BorderStyle.SINGLE,size:4,color:"808080"}; const borders={top:bd,bottom:bd,left:bd,right:bd};
+        const rows=[new D.TableRow({tableHeader:true, children:t.head.map((x,ci)=>new D.TableCell({borders,width:{size:w[ci],type:D.WidthType.DXA}, margins:{top:40,bottom:40,left:80,right:80}, children:[new D.Paragraph({spacing:{after:0},children:[new D.TextRun({text:x,bold:true})]})]}))})];
+        t.rows.forEach((r,ri)=>{ const tot=t.tot&&ri===t.rows.length-1;
+          rows.push(new D.TableRow({children:r.map((c,ci)=>{ const right=(t.num||[]).includes(ci);
+            const txt = typeof c==="string" ? [new D.TextRun({text:c,bold:tot})] : Array.isArray(c) ? runs(c) : [new D.TextRun({text:c.b||c.text,bold:tot||!!c.b})];
+            return new D.TableCell({borders,width:{size:w[ci],type:D.WidthType.DXA}, margins:{top:40,bottom:40,left:80,right:80}, children:[new D.Paragraph({spacing:{after:0}, alignment:right?D.AlignmentType.RIGHT:D.AlignmentType.LEFT, children:txt})]}); })})); });
+        out.push(new D.Table({width:{size:total,type:D.WidthType.DXA}, columnWidths:w, indent:{size:B1,type:D.WidthType.DXA}, rows}));
+        out.push(new D.Paragraph({spacing:{after:60},children:[]}));
+      }
+    });
+  });
+  out.push(new D.Paragraph({spacing:{before:360}, children:[new D.TextRun("For "),new D.TextRun({text:S.company||"[LLP name]",bold:true})]}));
+  out.push(new D.Paragraph({children:[]}),new D.Paragraph({children:[]}));
+  out.push(line(runs([F("sign1")]))); out.push(line(runs([F("sign1Des")])));
+  if(!isBlank(S.sign1Din)) out.push(line([new D.TextRun("DPIN: "+S.sign1Din)]));
+  if(!isBlank(S.sign2)){ out.push(new D.Paragraph({children:[]}),new D.Paragraph({children:[]})); out.push(line([new D.TextRun(S.sign2)])); out.push(line(runs([F("sign2Des")]))); if(!isBlank(S.sign2Din)) out.push(line([new D.TextRun("DPIN: "+S.sign2Din)])); }
+  out.push(new D.Paragraph({children:[]}));
+  out.push(line([new D.TextRun("Place: ")].concat(runs([F("place")]))));
+  out.push(line([new D.TextRun("Date: ")].concat(runs([DT("letterDate")]))));
+  return out;
+}
+window.__mrl = {analyseCaroDoc, docBlocks, analyseWorkbook, applyImport:()=>applyImport(), setPending:(p)=>{pendingImport=p;}, buildMain, buildCaro, docxFor, plainText, S:()=>S, set:(o)=>{Object.assign(S,o);}};
+
+/* ---------------- capabilities ---------------- */
+let downloads=null, dlTried=false;
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function getDownloads(){
+  if(downloads) return downloads;
+  /* window.claude is injected by the viewer after the page script runs, so wait for it */
+  for(let i=0;i<40 && !(window.claude && typeof window.claude.use==="function");i++) await sleep(250);
+  if(window.claude && typeof window.claude.use==="function"){
+    try { downloads = await window.claude.use("downloads"); } catch(e){ downloads=null; }
+  }
+  dlTried=true;
+  return downloads;
+}
+getDownloads();
+function fallbackDownload(filename, data){
+  try{
+    const blob = data instanceof Blob ? data : new Blob([data],{type: filename.endsWith(".json")?"application/json":"application/octet-stream"});
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    return true;
+  }catch(e){ return false; }
+}
+async function saveFile(filename, data){
+  toast("Preparing "+filename+"…");
+  const dl = await getDownloads();
+  if(dl){
+    try { await dl.save({filename, data}); toast("Saved "+filename); return; }
+    catch(e){ const c=e&&e.code;
+      if(c==="declined"){ toast("Download cancelled"); return; }
+      if(c==="rate_limited"){ toast("A download prompt is already open – confirm or close it first"); return; }
+      /* any other code: fall through to the direct download */
+    }
+  }
+  if(fallbackDownload(filename, data)) toast("Downloading "+filename+". If nothing appears, open this tool on its own page (artifact menu → Open) and try again.");
+  else toast("Your browser blocked the download. Open this tool on its own page and try again.");
+}
+async function downloadDocx(which){
+  const D=window.docx;
+  if(!D){ toast("The Word export library didn’t load. Check your connection and reload."); return; }
+  const models = which==="both" ? [buildMain(), buildCaro()] : [which==="caro"?buildCaro():buildMain()];
+  const children=[];
+  models.forEach((m,i)=>{ if(i>0) children.push(new D.Paragraph({children:[new D.PageBreak()]})); children.push.apply(children, docxFor(m)); });
+  const doc=new D.Document({creator:"MRL Drafter", title:"Management Representation Letter",
+    styles:{default:{document:{run:{font:"Arial",size:20}, paragraph:{spacing:{after:120,line:276}}}}},
+    sections:[{properties:{page:{size:{width:11906,height:16838}, margin:{top:1440,right:1440,bottom:1440,left:1440}}}, children}]});
+  const blob = await D.Packer.toBlob(doc);
+  const co=(S.company||"LLP").replace(/[^A-Za-z0-9]+/g,"_").replace(/_+$/,"");
+  const tag = "LLP_Audit_MRL";
+  await saveFile(co+"_"+tag+"_FY"+fyLabel()+".docx", blob);
+}
+
+/* ================= EXCEL IMPORT ================= */
+const MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseDateAny(v){
+  if(v instanceof Date && !isNaN(v)) return toISO(new Date(Date.UTC(v.getFullYear(),v.getMonth(),v.getDate())));
+  const s=String(v||"");
+  let m=/(\d{1,2})(?:st|nd|rd|th)?[\s\-\/.]+([A-Za-z]{3,9})[\s\-\/.,]+(\d{4})/.exec(s);
+  if(m && MON[m[2].slice(0,3).toLowerCase()]!==undefined){ const d=+m[1], y=+m[3]; if(d<1||d>31||y<1990||y>2100) return null; return toISO(new Date(Date.UTC(y,MON[m[2].slice(0,3).toLowerCase()],d))); }
+  m=/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})\b/.exec(s);
+  if(m){ const d=+m[1], mo=+m[2]-1, y=+m[3]; if(d<1||d>31||mo<0||mo>11||y<1990) return null; return toISO(new Date(Date.UTC(y,mo,d))); }
+  return null;
+}
+function normLabel(s){
+  let t=String(s||"").replace(/[’‘]/g,"'").replace(/\s+/g," ").trim().toLowerCase();
+  for(let i=0;i<3;i++) t=t.replace(/^([\-–•*:]+|\(?[a-z0-9]{1,4}\)|[ivx]+\.|[a-z]\.|\d+(\.\d+)*\.?|i{1,3}\.|iv\.|v\.)\s*/,"").trim();
+  t=t.replace(/\s*\((?:[ivx]+\s*[-+]\s*)*[ivx]+\)\s*$/,"").trim();
+  return t;
+}
+function lineize(name, rows){
+  let hdr=null; const lines=[];
+  rows.forEach((row,ri)=>{
+    const cells=row||[]; const texts=[], nums=[]; let labelCol=-1,label="",note=null;
+    cells.forEach((v,c)=>{
+      if(v==null) return;
+      if(v instanceof Date){ texts.push({c,t:v}); return; }
+      if(typeof v==="number"){ nums.push({c,v}); return; }
+      const s=String(v).trim(); if(!s) return;
+      if(/^\(?-?[\d,]+(\.\d+)?\)?$/.test(s) && /\d/.test(s)){ let n=Number(s.replace(/[(),]/g,"")); if(/^\(.*\)$/.test(s)) n=-n; nums.push({c,v:n}); return; }
+      texts.push({c,t:s});
+      if(labelCol<0 && /[A-Za-z]/.test(s)){ labelCol=c; label=s; }
+    });
+    const dates=texts.filter(x=>x.t instanceof Date || (String(x.t).length<=28 && parseDateAny(x.t))).map(x=>({c:x.c,iso:parseDateAny(x.t)})).filter(x=>x.iso);
+    const isHdr = dates.length>=1 && texts.filter(x=>!(x.t instanceof Date)).every(x=>String(x.t).length<=40);
+    if(isHdr){ const nc=texts.find(x=>/^note/i.test(String(x.t))); hdr={cols:dates.slice().sort((a,b)=>a.c-b.c), noteCol:nc?nc.c:-1, ri}; }
+    if(labelCol>=0){ const before=nums.filter(n=>n.c<labelCol); if(before.length) note=before[before.length-1].v; }
+    lines.push({sheet:name, ri, cells, label, norm:normLabel(label), labelCol, texts, nums:nums.filter(n=>n.c>labelCol), note, hdr, isHdr});
+  });
+  return lines;
+}
+function lineVal(L, which){
+  which=which||0;
+  const nums=L.nums.filter(n=>!L.hdr || n.c!==L.hdr.noteCol);
+  if(L.hdr && L.hdr.cols[which]){
+    const c=L.hdr.cols[which].c; const hit=nums.find(n=>n.c===c); if(hit) return hit.v;
+    const next=L.hdr.cols[which+1]; const inRange=nums.filter(n=>n.c>=c && (!next || n.c<next.c));
+    if(inRange.length) return inRange[0].v;
+    if(nums.length && which===0 && !nums.some(n=>n.c>=c)) return null;
+  }
+  if(!nums.length) return null;
+  if(which===0) return nums[0].v;
+  return nums[which]? nums[which].v : null;
+}
+function rangeVals(L){ if(!L.hdr||!L.hdr.cols[0]) return L.nums.map(n=>n.v); const c=L.hdr.cols[0].c, nx=L.hdr.cols[1]; return L.nums.filter(n=>n.c>=c && (!nx||n.c<nx.c)).map(n=>n.v); }
+
+function analyseWorkbook(wb){
+  const sheets=wb.SheetNames.map(n=>({name:n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null,blankrows:true})}));
+  sheets.forEach(s=>s.lines=lineize(s.name,s.rows));
+  const branch=/branch|consol|\(q\)|quarter|half.?year|\bq[1-4]\b/i;
+  function order(prefer){ const out=[]; prefer.forEach(r=>sheets.forEach(s=>{ if(!branch.test(s.name) && r.test(s.name) && !out.includes(s)) out.push(s); }));
+    sheets.forEach(s=>{ if(!branch.test(s.name) && !out.includes(s)) out.push(s); }); sheets.forEach(s=>{ if(!out.includes(s)) out.push(s); }); return out; }
+  const P_BS=[/^bs$|balance/i], P_PL=[/p\s*&\s*l|profit|^pl$|loss/i], P_CF=[/cfs|cash\s*flow/i], P_NT=[/note/i];
+  function find(re, prefer, needVal){
+    for(const s of order(prefer)) for(const L of s.lines){ if(L.norm && re.test(L.norm)){ const v=lineVal(L); if(needVal===false || v!=null) return {L, v, src:s.name+" › "+L.label.trim()}; } }
+    return null;
+  }
+  function section(headRe, prefer, confirmRe, maxLen){
+    for(const s of order(prefer)) for(let i=0;i<s.lines.length;i++){ const L=s.lines[i];
+      if(L.norm && headRe.test(L.norm)){
+        const win=s.lines.slice(i+1,i+18);
+        if(confirmRe && !win.some(x=>confirmRe.test(x.norm))) continue;
+        const out=[]; for(let j=i+1;j<Math.min(s.lines.length,i+1+(maxLen||45));j++){ const x=s.lines[j]; if(x.note!=null && x.norm && j>i+1 && /[a-z]{4}/.test(x.norm) && !x.nums.length) break; out.push(x); if(/^total\b/.test(x.norm)) break; }
+        return {sheet:s, head:L, lines:out, idx:i};
+      } }
+    return null;
+  }
+  const allText=sheets.flatMap(s=>s.lines.flatMap(L=>L.texts.map(t=>String(t.t)))).join("\n");
+  const F=[]; const miss=[];
+  const add=(k,value,display,src,extra)=>F.push(Object.assign({k,value,display,src,apply:true},extra||{}));
+  const nf=(k,why)=>miss.push({k,why});
+  const money=v=>"₹ "+fmtIN(Math.round(v*100)/100);
+
+  /* identity */
+  const bs=order(P_BS)[0];
+  const top=bs?bs.lines.slice(0,12):[];
+  const coL=top.find(L=>/\b(llp|limited liability partnership)\b/i.test(L.label) && !/llpin/i.test(L.label));
+  const coName=coL?coL.label.trim().replace(/^m\/s\.?\s*/i,"").replace(/\s*\(LLPIN[^)]*\)\s*$/i,"").trim():"";
+  if(coL) add("company", coName, coName, bs.name+" › heading");
+  else nf("company","LLP name not found in the Balance Sheet heading");
+  const cinM=/\b([A-Z]{3}-\d{4})\b/.exec(allText); if(cinM) add("cin",cinM[1],cinM[1],"Heading (LLPIN)"); else nf("cin","LLPIN not found");
+  const addrM=/\(address\s*:\s*([^)]+)\)/i.exec(allText); if(addrM){ const city=addrM[1].split(",").pop().trim(); add("city",city,city,"Heading (Address)"); add("place",city,city,"Heading (Address)",{apply:false}); }
+  else { const plM=/(?:^|\n)\s*place\s*[:\-]\s*([A-Za-z][A-Za-z .]+?)\s*(?:\n|$)/i.exec(allText); if(plM){ const city=plM[1].trim(); add("city",city,city,"Place of signing (no address in heading)"); add("place",city,city,"Place of signing"); } else nf("city","Registered office city not stated in the heading"); }
+  const lt=allText.toLowerCase();
+  /* year end */
+  let ye=null;
+  if(bs){ const t=bs.lines.find(L=>/as (at|on)\b/i.test(L.label)); if(t) ye=parseDateAny(t.label); if(!ye){ const h=bs.lines.find(L=>L.isHdr); if(h) ye=h.hdr.cols.map(c=>c.iso).sort().pop(); } }
+  if(ye){ if(/-03-31$/.test(ye)) add("ye",ye,fmtDate(ye),bs.name+" › title"); else nf("ye","Year end in the file ("+fmtDate(ye)+") is not 31st March – check section 2(1)(l)"); }
+  /* signatures – designated partners */
+  if(bs){
+    let audCol=-1; bs.rows.forEach(r=>(r||[]).forEach((v,c)=>{ if(typeof v==="string" && /^chartered accountants?$/i.test(v.trim())) audCol=c; }));
+    const DES=/^(designated partner|partner)\b/i;
+    const sigs=[];
+    bs.rows.forEach((r,ri)=>{ (r||[]).forEach((v,c)=>{ if(typeof v!=="string" || c===audCol) return; const t=v.replace(/\s+/g," ").trim(); const m=DES.exec(t); if(!m) return;
+      const rest=t.slice(m[0].length); const dm=/^\s*[,(]?\s*(?:D?PIN|DIN)?\s*(?:no\.?)?\s*[:.\-]?\s*(\d{8})?\s*\)?\s*$/i.exec(rest); if(!dm) return;
+      const below=[1,2].map(k=>String(((bs.rows[ri+k]||[])[c])||"")).join(" "); if(/membership|m\.\s?no|udin/i.test(below)) return;
+      let name=""; for(let k=1;k<=3;k++){ const u=bs.rows[ri-k]; const w=u&&u[c]; if(w!=null && String(w).trim() && !/^(d?pin|din)\b|^for\s|^membership|^frn|^udin/i.test(String(w).trim()) && !DES.test(String(w).trim())){ name=String(w).replace(/\s+/g," ").trim(); break; } }
+      let din=dm[1]||""; if(!din) for(let k=1;k<=2;k++){ const d=bs.rows[ri+k]; const w=d&&d[c]; const mm=w&&/(?:D?PIN|DIN)\s*(?:no\.?)?\s*[:.\-]?\s*(\d{8})/i.exec(String(w)); if(mm){ din=mm[1]; break; } }
+      if(name && !/^\d+$/.test(name)) sigs.push({name, des:/designated/i.test(m[0])?"Designated Partner":"Partner", din}); }); });
+    const dps=sigs.filter(x=>x.des==="Designated Partner"); const pool=dps.length?dps:sigs;
+    const sn=bs.name+" › signatures";
+    if(pool[0]){ add("sign1",pool[0].name,pool[0].name,sn); add("sign1Des",pool[0].des,pool[0].des,sn); if(pool[0].din) add("sign1Din",pool[0].din,pool[0].din,sn); }
+    if(pool[1]){ add("sign2",pool[1].name,pool[1].name,sn); add("sign2Des",pool[1].des,pool[1].des,sn); if(pool[1].din) add("sign2Din",pool[1].din,pool[1].din,sn); }
+    if(!pool.length) nf("sign1","Designated partners not found in the signature block");
+    for(let i=1;i<bs.rows.length;i++){ const r=bs.rows[i]||[]; let done=false; for(let c=0;c<r.length;c++){ if(typeof r[c]==="string" && /^chartered accountants?$/i.test(r[c].trim())){ const up=String((bs.rows[i-1]||[])[c]||"").trim(); if(up && !/^for\s+(&|and)\s+on\s+behalf/i.test(up)){ const firm=up.replace(/^for\s+/i,"").replace(/[,\s]+$/,""); add("firm",firm,firm,bs.name+" › auditor’s signature",{apply:false,note:"Untick if the letter is addressed to a different firm name."}); done=true; break; } } } if(done) break; }
+    const dt=bs.lines.flatMap(L=>L.texts).map(t=>/^date\s*[:\-]\s*(.+)$/i.exec(String(t.t))).filter(Boolean).map(m=>parseDateAny(m[1])).find(Boolean);
+    if(dt) add("letterDate",dt,fmtDate(dt),bs.name+" › date of audit report");
+  }
+  /* policy note */
+  const polL=find(/(significant|material) accounting polic/, P_NT, false);
+  if(polL && polL.L.note!=null) add("policyNote",String(polL.L.note),"Note "+polL.L.note,polL.src); else nf("policyNote","Accounting policies note not in the workbook");
+  if(/first[\s-]*in[\s,-]*first[\s-]*out|\bfifo\b/i.test(allText)) add("costFormula","First In First Out (FIFO)","FIFO","Accounting policy text");
+  else if(/weighted average (cost|method|basis)/i.test(allText)) add("costFormula","Weighted Average Cost","Weighted average","Accounting policy text");
+  else nf("costFormula","Inventory cost formula not stated in the workbook");
+  if(/straight[\s-]*line/i.test(allText)) add("depMethod","Straight Line Method","Straight Line Method","Accounting policy text");
+  else if(/written[\s-]*down[\s-]*value|\bwdv\b/i.test(allText)) add("depMethod","Written Down Value Method","Written Down Value Method","Accounting policy text");
+  else nf("depMethod","Depreciation method not stated in the workbook");
+  /* MSME */
+  const ms=find(/due to micro (and|&) small|dues of micro enterprises? (and|&) small|^micro (and|&) small enterprises$/, P_BS) || find(/^amount due to supplier|^total outstanding dues of micro/, P_NT);
+  if(ms) add("msme",String(ms.v),money(ms.v),ms.src); else nf("msme","MSME dues line not found");
+  const msSec=section(/^micro (and|&) small enterprise/, P_NT, /interest/);
+  if(msSec){ let it=0; msSec.lines.filter(L=>/^interest (due and payable for the year|paid under section 16)/.test(L.norm)).forEach(L=>{ const vs=rangeVals(L); it+=Math.max(0,...vs.map(Number).filter(isFinite)); }); add("msmeInt",String(it),it?money(it):"Nil",msSec.sheet.name+" › MSMED Act interest"); }
+  else nf("msmeInt","MSMED Act interest table not found – enter interest paid/payable (blank prints Nil)");
+  /* deferred tax */
+  const dtl=find(/^deferred tax liabilit(y|ies)(,?\s*\(?net\)?)?$/, P_BS), dta=find(/^deferred tax assets?(,?\s*\(?net\)?)?$/, P_BS);
+  const dtx = (dta && dta.v) ? {t:"Asset",x:dta} : (dtl && dtl.v) ? {t:"Liability",x:dtl} : null;
+  if(dtx){ add("dtType",dtx.t,"Deferred Tax "+dtx.t,dtx.x.src); add("dtAmt",String(Math.abs(dtx.x.v)),money(Math.abs(dtx.x.v)),dtx.x.src); }
+  else nf("dtAmt","No deferred tax balance found");
+  const dpl=find(/^deferred tax( expense| charge| \(credit\))?$/, P_PL);
+  if(dpl && dpl.v) add("dtPL",dpl.v<0?"Income":"Expense",(dpl.v<0?"Income ":"Expense ")+money(Math.abs(dpl.v)),dpl.src);
+  /* inventories */
+  const invSec=section(/^inventories$/, P_NT, /raw material|finished goods|stock.in.trade|work.in.progress/);
+  if(invSec){
+    const sums=[0,0,0,0,0,0,0]; let any=false;
+    invSec.lines.forEach(L=>{ if(!L.norm||/^total|^particulars|^\(valued|^valued/.test(L.norm)) return; const v=lineVal(L); if(v==null) return; any=true;
+      const n=L.norm; const i= /^raw material/.test(n)?0 : /^work.in.pro(gress|cess)/.test(n)?1 : /^finished goods/.test(n)?2 : /^(stock.in.trade|traded goods)/.test(n)?3 : /^stores/.test(n)?4 : /^loose tools?/.test(n)?5 : 6; sums[i]+=v; });
+    const lcnrv=/cost or (nrv|net realisable|net realizable)|lower of cost|whichever is (less|lower)/i.test(invSec.lines.concat([invSec.head]).map(L=>L.texts.map(t=>t.t).join(" ")).join(" "))
+      || /inventor[^.]{0,200}(lower of cost and net reali[sz]able value|cost (or|and) net reali[sz]able value,? whichever is (lower|less))/i.test(allText);
+    if(any){ const inv=sums.map(v=>[v?String(Math.round(v*100)/100):"", v?(lcnrv?LCNRV:"--"):"--"]); add("inv",inv,"7 heads, total "+money(sums.reduce((a,b)=>a+b,0)),invSec.sheet.name+" › Note "+(invSec.head.note??"")+" Inventories"); }
+  } else { const it=find(/^inventories$/,P_BS); if(it) nf("inv","Only the total ("+money(it.v)+") found – no inventory note to split by head"); else nf("inv","Inventory note not found"); }
+  /* cash */
+  const ch=find(/^cash (on|in) hand|^cash-in-hand|^cash balance/, P_NT.concat(P_CF));
+  if(ch) add("cash",String(ch.v),money(ch.v),ch.src); else nf("cash","Cash-on-hand line not found");
+  /* contingent */
+  const cl=section(/^contingent liabilities/, P_NT, null, 30);
+  if(cl){
+    let claims=0, tax=0, bg=0, capex=0; const other=[];
+    cl.lines.forEach(L=>{ if(!L.norm||/^total|^particulars/.test(L.norm)) return; const v=lineVal(L); if(v==null) return; const n=L.norm;
+      if(/claims against the (company|llp|firm|entity)/.test(n)) claims+=v;
+      else if(/income.?tax|indirect tax|gst|goods and services|sales tax|excise|service tax|customs|vat|demand/.test(n)) tax+=v;
+      else if(/guarantee/.test(n)) bg+=v;
+      else if(/capital commitment|contracts remaining|capital account/.test(n)) capex+=v;
+      else if(v) other.push([L.label.trim(), String(v)]); });
+    if(tax && claims>=tax) claims-=tax;
+    const z=(k,v)=>add(k, v?String(v):"", v?money(v):"Nil (prints the “No …” statement)", cl.sheet.name+" › Contingent liabilities");
+    z("clClaims",claims); z("clTax",tax); z("clBG",bg); z("clCapex",capex);
+    add("clOther",other,other.length?other.length+" item(s)":"None",cl.sheet.name+" › Contingent liabilities");
+  } else nf("clClaims","Contingent liabilities note not found");
+  /* quarterly returns */
+  const wcRows=[]; let hasRet=false; const seen=new Set();
+  sheets.forEach(s=>{ if(branch.test(s.name)) return; s.lines.forEach((L,i)=>{
+    if(!/as per quarterly (return|statement)/.test(L.norm)) return;
+    let qh=null; for(let k=i-1;k>=Math.max(0,i-6);k--){ if(/^particulars/.test(s.lines[k].norm)){ qh=s.lines[k]; break; } }
+    let bk=null; for(let k=i+1;k<Math.min(s.lines.length,i+26);k++){ if(/as per books/.test(s.lines[k].norm)){ bk=s.lines[k]; break; } }
+    if(!qh||!bk) return;
+    const item=L.label.replace(/as per quarterly.*$/i,"").trim()||"Current assets";
+    qh.texts.filter(t=>t.c>qh.labelCol).forEach(q=>{ const r=L.nums.find(n=>n.c===q.c), b=bk.nums.find(n=>n.c===q.c); if(!r||!b) return; if(r.v) hasRet=true;
+      if((r.v||b.v) && Math.abs(r.v-b.v)>1){ const key=item+q.t+r.v; if(seen.has(key)) return; seen.add(key);
+        wcRows.push([String(q.t), "", item, String(Math.round(r.v)), String(Math.round(b.v)), "Refer reconciliation in notes"]); } });
+  }); });
+  if(hasRet){ add("wc5",true,"Yes – quarterly returns filed with bank","Reconciliation of quarterly returns"); add("wcDiff",wcRows,wcRows.length?wcRows.length+" quarter-wise difference(s); add bank name and reasons":"No differences","Reconciliation of quarterly returns"); }
+  /* title deeds */
+  const td=section(/^title deeds of immovable property not held/, P_NT.concat([/disc/i]), null, 14);
+  if(td){ const rows=[]; td.lines.forEach(L=>{ if(!L.norm||/^relevant|^particulars/.test(L.norm)) return; const tx=L.texts.filter(t=>t.c>L.labelCol).map(t=>String(t.t).trim()); const v=L.nums.length?L.nums[0].v:0; const desc=tx[0]||"";
+      if((desc && !/^(na|n\.a\.|nil|-+)$/i.test(desc)) || v>0) rows.push([desc||L.label.trim(), v?String(v):"", tx[1]||"", tx[2]||"", tx[3]||"", tx[4]||""]); });
+    add("titleExc",rows,rows.length?rows.length+" property(ies)":"None – all title deeds in the LLP’s name",td.sheet.name+" › Title deeds"); }
+  /* cash flow */
+  const cfs=sheets.find(s=>P_CF[0].test(s.name)) || (lt.includes("cash flow from operating")?{}:null);
+  add("cashFlow",!!cfs,cfs?"Yes":"No",cfs?"Cash flow statement found":"No cash flow statement",{apply:!!cfs});
+  if(/actuarial|gratuity/i.test(allText)) add("empBen","actuarial","Gratuity / leave provision referred to","Notes text");
+  /* partners */
+  const ps=section(/^partners'? (capital|contribution)|^partners'? capital accounts?$/, P_NT, null, 30);
+  if(ps){ const rows=[]; ps.lines.forEach(L=>{ if(!L.norm||/^(total|opening|closing|add|less|balance|interest|remuneration|share of|salary|drawings?|particulars|capital introduced|withdrawals?)/.test(L.norm)||L.label.length>60) return; const v=lineVal(L); if(v==null||!v) return; rows.push([L.label.trim(),"","","",String(v)]); });
+    if(rows.length) add("partners",rows,rows.length+" partner(s) – add DPIN, designation and ratio",ps.sheet.name+" › Partners’ capital",{apply:false,note:"Check that these rows are partner names before applying."}); }
+  if(!ps) nf("partners","Partners’ capital note not found – enter partners, DPIN, ratio and contribution");
+  /* ICAI level from previous-year turnover and borrowings */
+  const ro=find(/^revenue from operations$|^(net )?sales$|^turnover$/, P_PL) || find(/^total (income|revenue)$/, P_PL);
+  let bPY=0, bCY=0, bfound=false; const bsS=order(P_BS)[0]; bsS && bsS.lines.forEach(L=>{ if(/borrowings$|^loans? from (banks?|partners)|^secured loans?$|^unsecured loans?$/.test(L.norm)){ const c=lineVal(L,0), p=lineVal(L,1); if(c!=null){ bCY+=c; bfound=true; } if(p!=null) bPY+=p; } });
+  if(ro){ const tPY=lineVal(ro.L,1), usePY=tPY!=null; const t=usePY?tPY:ro.v, b=usePY?bPY:bCY;
+    const L=(t>2.5e9||b>5e8)?"I":(t>5e8||b>1e8)?"II":(t>1e8||b>2e7)?"III":"IV";
+    add("level",L,"Level "+L+" – turnover "+money(t)+", borrowings "+money(b)+(usePY?" (previous year)":" (current year)"),ro.src,{note:"ICAI criteria use the immediately preceding year’s turnover and borrowings at any time during that year; confirm before applying."}); }
+  else nf("level","Turnover not found – select the entity level yourself");
+  ["engDate","agreementDate","litigation","events"].forEach(k=>nf(k,"Not part of financial statements"));
+  return {found:F, missing:miss};
+}
+
+
+let pendingImport=null;
+function labelFor(k){ return LABEL[k] || ({fw:"Accounting framework",ye:"Financial year end",inv:"Closing inventory by head",chk1:"CARO test: capital + reserves ≤ ₹1 cr",chk2:"CARO test: borrowings ≤ ₹1 cr",chk3:"CARO test: revenue ≤ ₹10 cr",caro:"Prepare CARO letter",cashFlow:"Cash flow statement included"}[k]) || k; }
+async function handleWorkbookFile(file){
+  if(!file) return;
+  if(!window.XLSX){ toast("The Excel reader didn’t load. Check your connection and reload."); return; }
+  toast("Reading "+file.name+"…");
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    const res=analyseWorkbook(wb);
+    pendingImport={file:file.name, res, kind:"fs"};
+    document.getElementById("toast").classList.remove("on");
+    openImportReview();
+  }catch(err){ toast("Couldn’t read that file: "+(err&&err.message||err)); }
+}
+function openImportReview(){
+  const {file,res}=pendingImport;
+  const ov=document.getElementById("impOv");
+  const optLabel=(k,v)=>{ for(const t of TABS) for(const g of (t.groups||[])) for(const f of g.f) if(f.k===k && f.o){ const o=f.o.find(x=>x[0]===v); if(o) return o[1].split("  ")[0]; } return null; };
+  const cur=k=>{ if(k==="ye") return fmtDate(yeISO())||"–"; if(k==="inv"){ const t=S.inv.reduce((a,r)=>a+(Number(digits(r[0]))||0),0); return t?"₹ "+fmtIN(t):"–"; }
+    const v=S[k]; if(Array.isArray(v)) return v.length?v.length+" row(s)":"None"; if(typeof v==="boolean") return v?"Yes":"No"; if(isBlank(v)) return "–";
+    const ol=optLabel(k,String(v)); if(ol) return ol; if(/^(letterDate|engDate|pvDate|periodStart)$/.test(k)) return fmtDate(v);
+    if(/^-?[\d.]+$/.test(String(v)) && LABEL[k] && /amount|due|value|balance|cash|interest|guarantee|claims|tax|commitment|loss/i.test(LABEL[k])) return "₹ "+fmtIN(v);
+    return String(v).length>28?String(v).slice(0,26)+"…":String(v); };
+  let h='<h2 id="impT">Review '+(pendingImport.kind==="caro"?"CARO answers":"figures")+' from '+esc(file)+'</h2><p>Untick anything you don’t want to apply. Applied values stay editable, and anything still blank shows up in the “blanks to fill” counter.</p>';
+  h+='<div class="imp-wrap"><table class="imp"><thead><tr><th></th><th>Field</th><th>Value found</th><th>Currently</th><th>Source</th></tr></thead><tbody>';
+  res.found.forEach((f,i)=>{ h+='<tr><td><input type="checkbox" data-imp="'+i+'"'+(f.apply?" checked":"")+' aria-label="Apply '+esc(labelFor(f.k))+'"></td><td>'+esc(labelFor(f.k))+'</td><td><b>'+esc(f.display)+"</b>"+(f.note?'<div class="hint">'+esc(f.note)+"</div>":"")+'</td><td class="mut">'+esc(cur(f.k))+'</td><td class="mut">'+esc(f.src)+"</td></tr>"; });
+  h+="</tbody></table></div>";
+  if(res.missing.length){ h+='<h3 style="margin:18px 0 6px;font-size:14px">Enter these yourself</h3><ul class="fixes">'+res.missing.map(m=>"<li><b>"+esc(labelFor(m.k))+"</b> – "+esc(m.why)+"</li>").join("")+"</ul>"; }
+  const actBar='<div class="act sticky"><span class="hint" style="color:var(--muted);font-size:12.5px">'+res.found.length+' values found · '+res.missing.length+' to enter yourself</span><span><button class="btn" id="impCancel">Cancel</button> <button class="btn primary" id="impApply">Apply selected values</button></span></div>';
+  h+=actBar;
+  ov.querySelector(".dlg").innerHTML=h; ov.classList.add("open");
+  ov.querySelector("#impCancel").onclick=()=>ov.classList.remove("open");
+  ov.querySelector("#impApply").onclick=applyImport;
+  ov.querySelectorAll("[data-imp]").forEach(cb=>cb.onchange=()=>{ res.found[+cb.dataset.imp].apply=cb.checked; });
+}
+function applyImport(){
+  const {file,res}=pendingImport; let n=0;
+  S.imported=S.imported||{};
+  res.found.filter(f=>f.apply).forEach(f=>{
+    let v=f.value;
+    if(f.k==="ye"){ const opt=YE_OPTS.find(o=>o[0]===v); if(opt){ S.ye=v; } else { S.ye="custom"; S.yeCustom=v; } }
+    else S[f.k]=Array.isArray(v)?JSON.parse(JSON.stringify(v)):v;
+    S.imported[f.k==="ye"&&S.ye==="custom"?"yeCustom":f.k]=f.src; n++;
+  });
+  if(pendingImport.kind==="caro") S.caroImportFile=file; else S.importFile=file;
+  S.started=true;
+  document.getElementById("impOv").classList.remove("open");
+  document.getElementById("ov").classList.remove("open");
+  refreshAll();
+  toast("Applied "+n+" value"+(n===1?"":"s")+" from "+file+". "+(MISSING.length?MISSING.length+" blank(s) left to fill.":"No blanks left."));
+}
+
+async function handleCaroFile(){}
+function analyseCaroDoc(){ return {found:[],missing:[]}; }
+function docBlocks(){ return []; }
+
+/* ---------------- form schema ---------------- */
+const YE_OPTS=[]; for(let y=2022;y<=2031;y++) YE_OPTS.push([y+"-03-31", "31st March, "+y+"  (FY "+(y-1)+"-"+String(y).slice(2)+")"]);
+const LEVEL_OPTS=[["I","Level I – turnover > ₹250 cr or borrowings > ₹50 cr"],["II","Level II – turnover ₹50–250 cr or borrowings ₹10–50 cr"],["III","Level III – turnover ₹10–50 cr or borrowings ₹2–10 cr"],["IV","Level IV – below Level III limits"]];
+const TABS=[
+ {id:"details", name:"Details", groups:[
+  {t:"Import from financial statements", gh:"Upload the Excel export of the LLP’s Balance Sheet, Statement of Profit and Loss and notes. You’ll review every value before it is applied.", f:[{k:"_import",type:"import"}]},
+  {t:"Clear default values", gh:"Removes the figures, names, addresses and text from every field so only what you enter or import remains. Entity level, year end and the yes/no choices are kept.", f:[{k:"_clear",type:"clear"}]},
+  {t:"Accounting framework and period", gh:"Ind AS, the Companies (AS) Rules, Schedule III and CARO do not apply to LLPs. The letter uses the ICAI Accounting Standards as applicable to non-company entities.", f:[
+    {k:"level",l:"Entity level under ICAI criteria",type:"select",o:LEVEL_OPTS,h:"Based on the immediately preceding year’s turnover and borrowings. Level I also covers entities with listed securities, banks, financial institutions and insurers."},
+    {k:"fmt",l:"Format of financial statements",type:"select",o:[["gn","ICAI Guidance Note on Financial Statements of Non-Corporate Entities"],["other","Format consistently followed by the LLP"]]},
+    {k:"ye",l:"Financial year end",type:"select",o:YE_OPTS,h:"Section 2(1)(l) of the Act: an LLP’s financial year ends on 31st March."},
+    {k:"firstPeriod",l:"First financial period of the LLP",type:"check"},
+    {k:"periodStart",l:"Period start date (incorporation date)",type:"date",show:()=>S.firstPeriod},
+    {k:"cashFlow",l:"Cash flow statement forms part of the financial statements",type:"check",show:()=>lvl()!=="I",h:"Mandatory for Level I; Level II–IV entities are exempt from AS 3."}
+  ]},
+  {t:"LLP", f:[
+    {k:"company",l:"LLP name",type:"text"},{k:"city",l:"City",type:"text"},{k:"cin",l:"LLPIN",type:"text"},
+    {k:"agreementDate",l:"Date of LLP Agreement",type:"date"},
+    {k:"suppAgreement",l:"Supplementary agreements (optional)",type:"text",h:"Printed after the date, e.g. “and supplementary agreement dated 1st April, 2024”."},
+    {k:"policyNote",l:"Note number for accounting policies",type:"text"},
+    {k:"engDate",l:"Date of audit engagement letter",type:"date"}
+  ]},
+  {t:"Partners", f:[
+    {k:"partners",l:"Partners, contribution and profit sharing ratio",type:"rows",cols:["Name","DPIN","Designated partner (Yes/No)","Profit sharing ratio","Contribution"]},
+    {k:"remun",l:"Interest on capital and remuneration",type:"select",o:[["yes","Provided as per LLP Agreement"],["no","None paid or provided"]]},
+    {k:"intRate",l:"Rate of interest on capital (% p.a.)",type:"text",show:()=>S.remun==="yes",h:"Section 40(b) allows up to 12% simple interest."},
+    {k:"loansPartners",l:"Loans from partners or relatives",type:"select",o:[["yes","Yes"],["no","None"]]}
+  ]},
+  {t:"Addressed to", f:[
+    {k:"firm",l:"Audit firm",type:"text"},{k:"firmAddr",l:"Firm address (one line per row)",type:"area"},{k:"salutation",l:"Salutation",type:"text"}
+  ]},
+  {t:"Signing", f:[
+    {k:"place",l:"Place",type:"text"},{k:"letterDate",l:"Date of letter",type:"date",h:"Should be the same as the date of the auditor’s report."},
+    {k:"sign1",l:"Designated partner name",type:"text"},{k:"sign1Des",l:"Designation",type:"text"},{k:"sign1Din",l:"DPIN",type:"text"},
+    {k:"sign2",l:"Second designated partner (optional)",type:"text"},{k:"sign2Des",l:"Second signatory designation",type:"text",show:()=>!isBlank(S.sign2)},{k:"sign2Din",l:"Second signatory DPIN",type:"text",show:()=>!isBlank(S.sign2)}
+  ]},
+  {t:"Applicability", f:[
+    {k:"cur",l:"Currency style",type:"select",o:[["₹","₹ 3,94,016/-"],["Rs.","Rs. 3,94,016/-"]]},
+    {k:"filings",l:"Forms 8 and 11 for the previous year",type:"select",o:[["time","Filed within time"],["late","Filed late with additional fees"],["pending","Pending"]]},
+    {k:"filingNote",l:"Details of late or pending filings",type:"area",show:()=>S.filings!=="time"},
+    {k:"empBen",l:"Employee benefits",type:"select",o:[["actuarial","Gratuity / leave provided"],["na","Not applicable"]]},
+    {k:"leases",l:"Lease arrangements",type:"select",o:[["yes","LLP has leases"],["na","No leases"]]},
+    {k:"taxRegime",l:"Income-tax",type:"select",o:[["normal","Normal provisions (firm rates)"],["amt","Alternate minimum tax u/s 115JC applies"]]},
+    {k:"umiss",l:"Uncorrected misstatements",type:"select",o:[["none","None"],["attached","Summary attached"]]}
+  ]}
+ ]},
+ {id:"figures", name:"Figures", groups:[
+  {t:"Basis of accounting", f:[
+    {k:"cashBasis",l:"Items recorded on cash basis",type:"rows",cols:["Particulars of income","Particulars of expenses"],h:"Leave “--” if none."},
+    {k:"depMethod",l:"Depreciation method",type:"select",o:[["Written Down Value Method","Written Down Value Method"],["Straight Line Method","Straight Line Method"]]},
+    {k:"usefulLife",l:"Depreciation rates",type:"select",o:[["it","Rates under the Income-tax Act"],["mgmt","Useful lives estimated by management"]]}
+  ]},
+  {t:"Trade payables", f:[
+    {k:"msme",l:"Amount due to Micro and Small Enterprises",type:"money"},
+    {k:"msmeInt",l:"Interest paid / payable under s.16 MSMED Act",type:"money",h:"Blank or 0 prints as “Nil”."}
+  ]},
+  {t:"Deferred tax", f:[
+    {k:"dtType",l:"Carrying balance",type:"select",o:[["Liability","Deferred Tax Liability"],["Asset","Deferred Tax Asset"]]},
+    {k:"dtPL",l:"Recognised in profit or loss as",type:"select",o:[["Expense","Deferred tax expense"],["Income","Deferred tax income"]]},
+    {k:"dtAmt",l:"Carrying value at year end",type:"money"}
+  ]},
+  {t:"Inventories", f:[
+    {k:"inv",l:"Closing inventory and valuation basis",type:"inv"},
+    {k:"costFormula",l:"Cost formula",type:"select",o:[["First In First Out (FIFO)","First In First Out (FIFO)"],["Weighted Average Cost","Weighted Average Cost"],["Specific Identification","Specific Identification"]]},
+    {k:"pvDate",l:"Date of physical count (if not the year end)",type:"date"},
+    {k:"pvExceptions",l:"Items not physically counted",type:"rows",cols:["Particulars"]}
+  ]},
+  {t:"Cash and bank", f:[{k:"cash",l:"Cash in hand at year end",type:"money"}]},
+  {t:"Property, plant and equipment", f:[
+    {k:"revalued",l:"PPE revalued during the year",type:"check"},
+    {k:"titleExc",l:"Immovable property not held in the LLP’s name",type:"rows",cols:["Description","Gross carrying value","Held in the name of","Partner / relative?","Period held","Reason"],h:"Leave empty if all title deeds are in the LLP’s name."}
+  ]},
+  {t:"Borrowings", f:[
+    {k:"wc5",l:"Quarterly stock / book-debt statements filed with banks",type:"check"},
+    {k:"wcDiff",l:"Differences between quarterly returns and books",type:"rows",cols:["Quarter","Bank","Particulars","As per return","As per books","Reason"],show:()=>S.wc5}
+  ]},
+  {t:"Contingent liabilities and commitments", gh:"Leave an amount blank to print the “No …” statement.", f:[
+    {k:"clBG",l:"Counter guarantees to banks",type:"money"},{k:"clClaims",l:"Claims not acknowledged as debts",type:"money"},
+    {k:"clTax",l:"Disputed tax liabilities in appeal",type:"money"},{k:"clCapex",l:"Capital commitments",type:"money"},
+    {k:"clOther",l:"Other contingent liabilities",type:"rows",cols:["Nature","Amount"]}
+  ]},
+  {t:"Other matters", f:[
+    {k:"events",l:"Events after the balance sheet date",type:"area",h:"Leave blank for “no events”."},
+    {k:"disc",l:"Discontinuing operations",type:"area",h:"Leave blank for “none”."},
+    {k:"litigation",l:"Pending litigation",type:"rows",cols:["Particulars","Forum","Amount","Status"]}
+  ]}
+ ]},
+ {id:"additions", name:"Additions"}
+];
+TABS.forEach(t=>(t.groups||[]).forEach(g=>g.f.forEach(f=>{ if(f.l) LABEL[f.k]=f.l; TAB_OF[f.k]=t.id; })));
+LABEL.periodStart="Period start date"; LABEL.engDate="Engagement letter date"; LABEL.letterDate="Date of letter";
+
+/* ---------------- form render ---------------- */
+const formEl=document.getElementById("form");
+function renderTabs(){
+  const el=document.getElementById("tabs");
+  el.innerHTML=TABS.map(t=>'<button role="tab" data-tab="'+t.id+'" aria-selected="'+(S.tab===t.id)+'">'+t.name+"</button>").join("");
+}
+function caroVerdict(){
+  if(S.coType==="public"||S.coType==="listed") return ["y","CARO 2020 applies – the company is a public company."];
+  if(S.coType==="opc"||S.chkSmall||S.coType==="small") return ["n","Exempt – OPC or small company. Untick “Prepare the CARO letter” below if you don’t need it."];
+  if(S.chk1&&S.chk2&&S.chk3&&S.chk4) return ["n","Exempt under paragraph 1(2)(v) of CARO 2020 – the private company meets all four conditions."];
+  return ["y","CARO 2020 applies – at least one exemption condition is not met."];
+}
+function fieldHTML(f){
+  if(f.show && !f.show()) return "";
+  const id="f_"+f.k, v=S[f.k];
+  const hint=(f.h?'<div class="hint">'+esc(f.h)+"</div>":"")+(S.imported&&S.imported[f.k]?'<div class="src">From '+(/^Clause /.test(S.imported[f.k])?"CARO report":"Excel")+': '+esc(S.imported[f.k])+"</div>":"");
+  switch(f.type){
+    case "import": return '<div class="drop" id="dropZone" data-kind="fs"><button class="btn primary" id="impBtn">Upload Excel financials</button><p>'+(S.importFile?"Last imported: "+esc(S.importFile)+" · "+Object.keys(S.imported||{}).length+" fields filled":"Drag a .xlsx file here or use the button.")+"</p>"+(pendingImport&&pendingImport.kind!=="caro"?'<p><button class="addrow" id="impReopen">Review last import again</button></p>':"")+"</div>";
+    case "clear": return '<button class="btn" id="clearBtn">Clear all default values</button>';
+    case "caroimport": return '<div class="drop" data-kind="caro"><button class="btn primary" id="caroBtn">Upload CARO Word file</button><p>'+(S.caroImportFile?"Last imported: "+esc(S.caroImportFile):"Drag a .docx file here or use the button.")+"</p>"+(pendingImport&&pendingImport.kind==="caro"?'<p><button class="addrow" id="impReopen">Review last import again</button></p>':"")+"</div>";
+    case "verdict": { const [c,t]=caroVerdict(); return '<div class="verdict '+c+'">'+esc(t)+"</div>"; }
+    case "text": return '<div class="fld"><label for="'+id+'">'+esc(f.l)+'</label><input type="text" id="'+id+'" data-k="'+f.k+'" value="'+esc(v||"")+'">'+hint+"</div>";
+    case "date": return '<div class="fld"><label for="'+id+'">'+esc(f.l)+'</label><input type="date" id="'+id+'" data-k="'+f.k+'" data-re="1" value="'+esc(v||"")+'">'+hint+"</div>";
+    case "area": return '<div class="fld"><label for="'+id+'">'+esc(f.l)+'</label><textarea id="'+id+'" data-k="'+f.k+'">'+esc(v||"")+"</textarea>"+hint+"</div>";
+    case "money": return '<div class="fld"><label for="'+id+'">'+esc(f.l)+'</label><input type="text" inputmode="decimal" id="'+id+'" data-k="'+f.k+'" data-money="1" value="'+esc(v||"")+'" placeholder="Amount in rupees"><div class="money" data-mfor="'+f.k+'">'+(isBlank(v)?"":S.cur+" "+fmtIN(v))+"</div>"+hint+"</div>";
+    case "select": return '<div class="fld"><label for="'+id+'">'+esc(f.l)+'</label><select id="'+id+'" data-k="'+f.k+'" data-re="1">'+f.o.map(o=>'<option value="'+esc(o[0])+'"'+(String(v)===o[0]?" selected":"")+">"+esc(o[1])+"</option>").join("")+"</select>"+hint+"</div>";
+    case "check": return '<div class="fld"><label class="chk"><input type="checkbox" id="'+id+'" data-k="'+f.k+'" data-re="1"'+(v?" checked":"")+"> <span>"+esc(f.l)+"</span></label>"+hint+"</div>";
+    case "rows": {
+      const rows=v||[];
+      let h='<div class="fld" id="'+id+'"><label>'+esc(f.l)+'</label><div class="rows-wrap"><table class="rows"><thead><tr>'+f.cols.map(c=>"<th>"+esc(c)+"</th>").join("")+"<th></th></tr></thead><tbody>";
+      rows.forEach((r,ri)=>{ h+="<tr>"+f.cols.map((c,ci)=>'<td><input type="text" aria-label="'+esc(c)+'" data-rk="'+f.k+'" data-r="'+ri+'" data-c="'+ci+'" value="'+esc(r[ci]||"")+'"></td>').join("")+'<td><button class="x" data-del="'+f.k+'" data-r="'+ri+'" aria-label="Remove row">×</button></td></tr>'; });
+      h+='</tbody></table></div><button class="addrow" data-add="'+f.k+'" data-n="'+f.cols.length+'">Add row</button>'+hint+"</div>";
+      return h; }
+    case "inv": {
+      let h='<div class="fld" id="'+id+'"><label>'+esc(f.l)+'</label><div class="rows-wrap"><table class="rows inv"><tbody>';
+      let tot=0;
+      INV_ROWS.forEach((n,i)=>{ const r=S.inv[i]; const d=Number(digits(r[0])); if(!isBlank(r[0])&&isFinite(d)) tot+=d;
+        h+="<tr><td>"+esc(n)+'</td><td><input type="text" inputmode="decimal" aria-label="'+esc(n)+' value" data-inv="'+i+'" data-c="0" value="'+esc(r[0]||"")+'"></td><td><select aria-label="'+esc(n)+' basis" data-inv="'+i+'" data-c="1">'+[["--","--"],[LCNRV,"Lower of cost and NRV"],["At cost","At cost"],["At net realisable value","At NRV"]].map(o=>'<option value="'+esc(o[0])+'"'+(r[1]===o[0]?" selected":"")+">"+esc(o[1])+"</option>").join("")+"</select></td></tr>"; });
+      h+='</tbody><tfoot><tr><td>Total</td><td id="invTot">'+S.cur+" "+fmtIN(tot)+"</td><td></td></tr></tfoot></table></div></div>";
+      return h; }
+  }
+  return "";
+}
+function renderForm(){
+  renderTabs();
+  if(S.tab==="additions"){ renderAdditions(); return; }
+  const tab=TABS.find(t=>t.id===S.tab);
+  formEl.innerHTML = tab.groups.filter(g=>!g.show||g.show()).map(g=>'<div class="grp"><h3>'+esc(g.t)+"</h3>"+(g.gh?'<p class="gh">'+esc(g.gh)+"</p>":"")+g.f.map(fieldHTML).join("")+"</div>").join("");
+}
+function renderAdditions(){
+  const docs=[["LLP statutory audit MRL",buildMain()]];
+  let h='<div class="grp"><h3>Suggested additions and revisions</h3><p class="gh">Paragraphs marked <span class="pill new">Added</span> are additions I suggest under the LLP Act, 2008, the LLP Rules, 2009, the ICAI framework for non-company entities and the Standards on Auditing. <span class="pill rev">Revised</span> paragraphs were changed from the company letter. Untick any you don’t want; you can also toggle paragraphs directly in the preview.</p>'+
+   '<button class="btn" data-bulk="new-off">Exclude all additions</button> <button class="btn" data-bulk="new-on">Include all additions</button></div>';
+  h+='<div class="grp"><h3>How this differs from the company letter</h3><ul class="fixes">'+
+    "<li>Ind AS, the Companies (Accounting Standards) Rules and Schedule III do not apply. The letter refers to the ICAI Accounting Standards as applicable to non-company entities (Level I to IV) and to the ICAI Guidance Note format.</li>"+
+    "<li>CARO 2020 applies only to companies, so there is no CARO letter. Section 143(1) inquiries, director disqualification, rule 11 matters, CSR, IFC reporting and audit trail rules are removed.</li>"+
+    "<li>Books of account follow section 34 of the LLP Act and rule 24 of the LLP Rules; the year must end on 31st March under section 2(1)(l).</li>"+
+    "<li>A Partners’ Funds section covers the LLP Agreement, Form 3 and Form 4 filings, profit sharing, interest and remuneration within section 40(b), and partner confirmations.</li>"+
+    "<li>General representations cover Forms 8 and 11, solvency, and designated partners under section 7.</li>"+
+    "<li>Signatures are by designated partners with DPIN.</li></ul></div>";
+  docs.forEach(([name,m])=>{
+    h+='<div class="grp"><h3>'+esc(name)+"</h3>";
+    m.sections.forEach(sec=>sec.items.filter(it=>it.tag).forEach(it=>{
+      h+='<label class="add-item"><input type="checkbox" data-incl="'+it.id+'"'+(included(it)?" checked":"")+'><b><span class="pill '+it.tag+'">'+(it.tag==="new"?"Added":"Revised")+"</span>"+esc(it.name)+'</b><span class="meta">'+esc(it.note)+" · "+esc(sec.title)+"</span></label>";
+    }));
+    h+="</div>";
+  });
+  formEl.innerHTML=h;
+}
+
+/* ---------------- top bar ---------------- */
+function renderTop(){
+  document.getElementById("brandSub").textContent=(S.company||"Untitled LLP")+" · Level "+lvl()+" · FY "+fyLabel();
+  document.getElementById("topFw").innerHTML=["I","II","III","IV"].map(l=>'<button data-fw="'+l+'" aria-pressed="'+(lvl()===l)+'" title="'+esc(LEVEL_OPTS.find(o=>o[0]===l)[1])+'">Level '+l+'</button>').join("");
+  document.getElementById("topYe").innerHTML=YE_OPTS.map(o=>'<option value="'+o[0]+'"'+(S.ye===o[0]?" selected":"")+">"+(o[0]==="custom"?(S.ye==="custom"&&S.yeCustom?fmtDate(S.yeCustom):"Other date…"):o[1].split("  ")[0])+"</option>").join("");
+  document.querySelectorAll("#docSw button").forEach(b=>b.setAttribute("aria-pressed", String(S.doc===b.dataset.d)));
+  document.querySelectorAll("#paneSw button").forEach(b=>b.setAttribute("aria-pressed", String(document.body.dataset.pane===b.dataset.p)));
+  document.getElementById("optMarks").checked=S.marks; document.getElementById("optHide").checked=S.hideOff;
+  document.getElementById("paper").classList.toggle("nomark",!S.marks);
+  document.getElementById("paper").classList.toggle("hideoff",S.hideOff);
+}
+function refreshAll(){ renderTop(); renderForm(); renderPaper(); save(); }
+function refreshPreview(){ renderTop(); renderPaper(); save(); }
+
+/* ---------------- events ---------------- */
+formEl.addEventListener("input", e=>{
+  const t=e.target;
+  if(t.dataset.k && S.imported) delete S.imported[t.dataset.k];
+  if(t.dataset.rk && S.imported) delete S.imported[t.dataset.rk];
+  if(t.dataset.k && t.type!=="checkbox" && t.tagName!=="SELECT"){ S[t.dataset.k]=t.value;
+    if(t.dataset.money){ const m=formEl.querySelector('[data-mfor="'+t.dataset.k+'"]'); if(m) m.textContent=isBlank(t.value)?"":S.cur+" "+fmtIN(t.value); }
+    if(t.type==="date"){ refreshAll(); return; }
+    refreshPreview(); return; }
+  if(t.dataset.rk){ S[t.dataset.rk][+t.dataset.r][+t.dataset.c]=t.value; refreshPreview(); return; }
+  if(t.dataset.inv!==undefined && t.tagName==="INPUT"){ S.inv[+t.dataset.inv][0]=t.value; let tot=0; S.inv.forEach(r=>{const d=Number(digits(r[0])); if(!isBlank(r[0])&&isFinite(d)) tot+=d;}); const el=document.getElementById("invTot"); if(el) el.textContent=S.cur+" "+fmtIN(tot); refreshPreview(); }
+});
+formEl.addEventListener("change", e=>{
+  const t=e.target;
+  if(t.dataset.incl){ S.inc[t.dataset.incl]=t.checked; refreshPreview(); return; }
+  if(t.dataset.inv!==undefined && t.tagName==="SELECT"){ S.inv[+t.dataset.inv][1]=t.value; refreshPreview(); return; }
+  if(t.dataset.k && (t.type==="checkbox"||t.tagName==="SELECT")){
+    S[t.dataset.k] = t.type==="checkbox" ? t.checked : t.value; if(S.imported) delete S.imported[t.dataset.k];
+    const st=formEl.scrollTop; refreshAll(); formEl.scrollTop=st;
+    const again=document.getElementById(t.id); if(again) again.focus();
+  }
+});
+formEl.addEventListener("click", e=>{
+  const t=e.target.closest("button"); if(!t) return;
+  if(t.id==="impBtn"){ document.getElementById("xlsFile").click(); return; }
+  if(t.id==="caroBtn"){ document.getElementById("docFile").click(); return; }
+  if(t.id==="clearBtn"){ openClear(); return; }
+  if(t.id==="impReopen"){ openImportReview(); return; }
+  if(t.dataset.add){ const k=t.dataset.add; S[k]=S[k]||[]; S[k].push(Array(+t.dataset.n).fill("")); const st=formEl.scrollTop; refreshAll(); formEl.scrollTop=st;
+    const inp=formEl.querySelector('[data-rk="'+k+'"][data-r="'+(S[k].length-1)+'"][data-c="0"]'); if(inp) inp.focus(); }
+  if(t.dataset.del){ S[t.dataset.del].splice(+t.dataset.r,1); const st=formEl.scrollTop; refreshAll(); formEl.scrollTop=st; }
+  if(t.dataset.bulk){ const on=t.dataset.bulk==="new-on"; [buildMain(),buildCaro()].forEach(m=>m.sections.forEach(s=>s.items.forEach(it=>{ if(it.tag==="new") S.inc[it.id]=on; }))); refreshAll(); }
+});
+document.getElementById("tabs").addEventListener("click", e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; S.tab=b.dataset.tab; formEl.scrollTop=0; renderForm(); save(); });
+
+const paper=document.getElementById("paper");
+paper.addEventListener("click", e=>{
+  const tg=e.target.closest("[data-tg]");
+  if(tg){ const id=tg.dataset.tg; const m=[buildMain(),buildCaro()]; let it=null; m.forEach(x=>x.sections.forEach(s=>s.items.forEach(i=>{ if(i.id===id) it=i; })));
+    S.inc[id]=!included(it); refreshPreview(); if(S.tab==="additions") renderForm(); return; }
+  const f=e.target.closest(".f[data-k]"); if(f) goToField(f.dataset.k);
+});
+paper.addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.matches(".f[data-k]")){ e.preventDefault(); goToField(e.target.dataset.k); } });
+function goToField(k){
+  if(k==="ye" && S.ye!=="custom"){ k="ye"; }
+  if(k==="ye" && S.ye==="custom") k="yeCustom";
+  const tab=TAB_OF[k]; if(!tab) return;
+  S.tab=tab; renderForm();
+  document.body.dataset.pane="edit"; renderTop();
+  const el=document.getElementById("f_"+k); if(!el) return;
+  const wrap=el.closest(".fld")||el; wrap.scrollIntoView({block:"center",behavior:"smooth"});
+  wrap.classList.add("flash"); setTimeout(()=>wrap.classList.remove("flash"),1400);
+  const focusable = el.matches("input,select,textarea") ? el : el.querySelector("input,select,textarea"); if(focusable) focusable.focus({preventScroll:true});
+}
+let blankIdx=0;
+document.getElementById("blanks").addEventListener("click", ()=>{ if(!MISSING.length) return; const k=MISSING[blankIdx%MISSING.length]; blankIdx++; goToField(k); });
+
+document.getElementById("topFw").addEventListener("click", e=>{ const b=e.target.closest("button[data-fw]"); if(!b) return; S.level=b.dataset.fw; refreshAll(); toast("Switched to Level "+lvl()+(lvl()==="I"?" – all Accounting Standards apply in full":" – MSME exemptions available")); });
+document.getElementById("topYe").addEventListener("change", e=>{ S.ye=e.target.value; if(S.ye==="custom"){ S.tab="details"; refreshAll(); goToField("yeCustom"); } else refreshAll(); });
+document.getElementById("docSw").addEventListener("click", e=>{ const b=e.target.closest("button[data-d]"); if(!b) return; S.doc=b.dataset.d; document.getElementById("scroll").scrollTop=0; refreshPreview(); });
+document.getElementById("paneSw").addEventListener("click", e=>{ const b=e.target.closest("button[data-p]"); if(!b) return; document.body.dataset.pane=b.dataset.p; renderTop(); });
+document.getElementById("optMarks").addEventListener("change", e=>{ S.marks=e.target.checked; refreshPreview(); });
+document.getElementById("optHide").addEventListener("change", e=>{ S.hideOff=e.target.checked; refreshPreview(); });
+
+const dlBtn=document.getElementById("dlBtn"), dlMenu=document.getElementById("dlMenu");
+dlBtn.addEventListener("click", e=>{ e.stopPropagation(); const o=!dlMenu.classList.contains("open"); dlMenu.classList.toggle("open",o); dlBtn.setAttribute("aria-expanded",String(o)); });
+document.addEventListener("click", e=>{ if(!e.target.closest(".menu")){ dlMenu.classList.remove("open"); dlBtn.setAttribute("aria-expanded","false"); } });
+dlMenu.addEventListener("click", async e=>{
+  const b=e.target.closest("button[data-dl]"); if(!b) return; dlMenu.classList.remove("open");
+  const a=b.dataset.dl;
+  if(a==="main"||a==="caro"||a==="both"){ try{ await downloadDocx(a); }catch(err){ toast("Couldn’t build the Word file: "+(err&&err.message||err)); } }
+  else if(a==="copy"){ const txt=plainText(S.doc==="caro"?buildCaro():buildMain()); try{ await navigator.clipboard.writeText(txt); toast("Letter copied as text"); }catch(err){ showTextFallback(txt); } }
+  else if(a==="json"){ const co=(S.company||"LLP").replace(/[^A-Za-z0-9]+/g,"_"); await saveFile(co+"_MRL_inputs_FY"+fyLabel()+".json", JSON.stringify(S,null,2)); }
+  else if(a==="docx"){ document.getElementById("docFile").click(); }
+  else if(a==="xls"){ document.getElementById("xlsFile").click(); }
+  else if(a==="load"){ document.getElementById("loadFile").click(); }
+  else if(a==="setup"){ openSetup(); }
+  else if(a==="clear"){ openClear(); }
+});
+document.getElementById("loadFile").addEventListener("change", async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{ const o=JSON.parse(await f.text()); S=Object.assign(clone(DEF),o,{started:true}); refreshAll(); toast("Inputs loaded"); }catch(err){ toast("That file isn’t a saved MRL inputs file"); }
+  e.target.value="";
+});
+function showTextFallback(txt){
+  const w=document.createElement("div"); w.className="ov open"; w.innerHTML='<div class="dlg"><h2>Copy the letter</h2><p>Clipboard access is blocked here. Select all the text below and copy it.</p><textarea style="width:100%;height:50vh;font:12px/1.4 monospace;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)"></textarea><div class="act"><span></span><button class="btn primary">Close</button></div></div>';
+  w.querySelector("textarea").value=txt; document.body.appendChild(w); w.querySelector("textarea").select();
+  w.querySelector("button").onclick=()=>w.remove();
+}
+let tt; function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("on"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("on"),2800); }
+
+/* ---------------- clear defaults ---------------- */
+let undoSnap=null;
+function openClear(){
+  dlMenu.classList.remove("open");
+  const w=document.createElement("div"); w.className="ov open"; w.setAttribute("role","dialog"); w.setAttribute("aria-modal","true");
+  w.innerHTML='<div class="dlg"><h2>Clear default values?</h2><p>This empties every text field, amount, date and table in both letters – LLP details, partners, signatories, the audit firm and address, figures and tables – and removes the “From Excel / CARO report” markers. The entity level, year end and yes/no choices stay as they are. Empty fields then show as blanks to fill.</p><div class="act"><span></span><span><button class="btn" data-x="no">Cancel</button> <button class="btn primary" data-x="yes">Clear values</button></span></div></div>';
+  document.body.appendChild(w);
+  w.querySelector('[data-x="yes"]').focus();
+  w.addEventListener("click", e=>{ const b=e.target.closest("[data-x]"); if(!b && e.target!==w) return; w.remove(); if(b && b.dataset.x==="yes") clearDefaults(); });
+  w.addEventListener("keydown", e=>{ if(e.key==="Escape") w.remove(); });
+}
+function clearDefaults(){
+  undoSnap=JSON.stringify(S);
+  TABS.forEach(t=>(t.groups||[]).forEach(g=>g.f.forEach(f=>{
+    if(["text","area","money","date"].includes(f.type)){ if(f.k!=="yeCustom") S[f.k]=""; }
+    else if(f.type==="rows") S[f.k]=[];
+    else if(f.type==="inv") S.inv=INV_ROWS.map(()=>["","--"]);
+  })));
+  S.lgRows=[["Subsidiaries","",""],["Joint Ventures","",""],["Associates","",""],["Others","",""]];
+  S.imported={}; S.importFile=""; S.caroImportFile="";
+  refreshAll();
+  const t=document.getElementById("toast");
+  t.innerHTML='Default values cleared. <button id="undoClear" style="margin-left:10px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer">Undo</button>';
+  t.classList.add("on"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("on"),9000);
+  document.getElementById("undoClear").onclick=()=>{ if(!undoSnap) return; S=JSON.parse(undoSnap); undoSnap=null; refreshAll(); toast("Values restored"); };
+}
+
+document.getElementById("xlsFile").addEventListener("change", e=>{ const f=e.target.files[0]; e.target.value=""; handleWorkbookFile(f); });
+formEl.addEventListener("dragover", e=>{ const d=e.target.closest(".drop[data-kind]"); if(d){ e.preventDefault(); d.classList.add("over"); } });
+formEl.addEventListener("dragleave", e=>{ const d=e.target.closest(".drop[data-kind]"); if(d) d.classList.remove("over"); });
+formEl.addEventListener("drop", e=>{ const d=e.target.closest(".drop[data-kind]"); if(!d) return; e.preventDefault(); d.classList.remove("over"); const f=e.dataTransfer.files[0]; if(d.dataset.kind==="caro") handleCaroFile(f); else handleWorkbookFile(f); });
+document.getElementById("docFile").addEventListener("change", e=>{ const f=e.target.files[0]; e.target.value=""; handleCaroFile(f); });
+document.getElementById("impOv").addEventListener("keydown", e=>{ if(e.key==="Escape") document.getElementById("impOv").classList.remove("open"); });
+
+/* ---------------- setup overlay ---------------- */
+const ov=document.getElementById("ov");
+let ovFw=lvl();
+function openSetup(){
+  ovFw=lvl();
+  document.getElementById("ovYe").innerHTML=YE_OPTS.map(o=>'<option value="'+o[0]+'"'+(S.ye===o[0]?" selected":"")+">"+esc(o[1])+"</option>").join("");
+  document.getElementById("ovCustom").value=S.yeCustom||"";
+  document.getElementById("ovCustomW").hidden = S.ye!=="custom";
+  document.getElementById("ovCo").value=S.company||"";
+  document.getElementById("ovBlank").checked=false;
+  document.querySelectorAll("#ovFw .fwc").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.fw===ovFw)));
+  ov.classList.add("open"); setTimeout(()=>document.querySelector('#ovFw .fwc[aria-pressed="true"]').focus(),30);
+}
+document.getElementById("ovFw").addEventListener("click", e=>{ const b=e.target.closest(".fwc"); if(!b) return; ovFw=b.dataset.fw; document.querySelectorAll("#ovFw .fwc").forEach(x=>x.setAttribute("aria-pressed",String(x===b))); });
+document.getElementById("ovImport").addEventListener("click", ()=>document.getElementById("xlsFile").click());
+document.getElementById("ovYe").addEventListener("change", e=>{ document.getElementById("ovCustomW").hidden = e.target.value!=="custom"; });
+document.getElementById("ovGo").addEventListener("click", ()=>{
+  const ye=document.getElementById("ovYe").value, cu=document.getElementById("ovCustom").value;
+  if(ye==="custom" && !cu){ toast("Pick the year-end date"); document.getElementById("ovCustom").focus(); return; }
+  if(document.getElementById("ovBlank").checked){
+    const keep={inc:S.inc, firm:S.firm, firmAddr:S.firmAddr, salutation:S.salutation};
+    S=Object.assign(clone(DEF), keep);
+    BLANK_KEYS.forEach(k=>S[k]="");
+    S.inv=INV_ROWS.map(()=>["","--"]); S.cashBasis=[["--","--"]]; S.pvExceptions=[["--"]]; S.disputed=[["--","--","--","--"]];
+  }
+  S.level=ovFw; S.ye=ye; S.yeCustom=cu; const co=document.getElementById("ovCo").value.trim(); S.company=co||S.company; S.started=true;
+  ov.classList.remove("open"); refreshAll();
+});
+ov.addEventListener("keydown", e=>{ if(e.key==="Escape" && S.started) ov.classList.remove("open"); });
+
+/* ---------------- init ---------------- */
+document.body.dataset.pane = window.matchMedia("(max-width: 920px)").matches ? "edit" : "edit";
+refreshAll();
+if(!S.started) openSetup();
+})();
+</script>
+</body>
+</html>
