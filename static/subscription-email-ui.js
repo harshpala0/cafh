@@ -1,7 +1,9 @@
-/* CA FirmHub — email subscription gate + firm-scoped login | Designed & Built by Harsh Pala */
+/* CA FirmHub — email subscription gate + multi-firm pick + firm-scoped login | Designed & Built by Harsh Pala */
 (function () {
   if (window.__cafhSubEmail) return;
   window.__cafhSubEmail = true;
+
+  var _pendingSelection = null;
 
   function enhanceGate() {
     var input = document.getElementById('sub-id');
@@ -18,7 +20,7 @@
     if (tag) {
       tag.innerHTML =
         'Enter the <strong>email registered with your firm subscription</strong>.<br>' +
-        'This is a one-time step on this browser — you will not be asked again until cleared.';
+        'If several firms share this email, you will choose your firm next.';
     }
     if (!document.getElementById('cafh-sub-hint')) {
       var hint = document.createElement('p');
@@ -29,12 +31,171 @@
     }
   }
 
+  function ensureFirmPickScreen() {
+    var el = document.getElementById('cafh-firm-pick-screen');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'cafh-firm-pick-screen';
+    el.style.cssText =
+      'display:none;position:fixed;inset:0;z-index:9999;background:rgba(11,31,58,.92);' +
+      'align-items:center;justify-content:center;padding:20px;';
+    el.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:28px 24px;' +
+      'box-shadow:0 20px 50px rgba(0,0,0,.35);font-family:system-ui,sans-serif">' +
+      '<div style="font-size:13px;font-weight:600;color:#0B1F3A;margin-bottom:4px">CA FirmHub</div>' +
+      '<h2 style="margin:0 0 8px;font-size:20px;color:#0B1F3A">Select your firm</h2>' +
+      '<p id="cafh-firm-pick-email" style="font-size:13px;color:#64748b;margin:0 0 16px"></p>' +
+      '<div id="cafh-firm-pick-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>' +
+      '<p id="cafh-firm-pick-err" style="display:none;color:#b91c1c;font-size:13px;margin:0 0 10px"></p>' +
+      '<button type="button" id="cafh-firm-pick-back" style="background:transparent;border:none;' +
+      'color:#64748b;font-size:13px;cursor:pointer;padding:8px 0">← Use a different email</button>' +
+      '</div>';
+    document.body.appendChild(el);
+    var back = document.getElementById('cafh-firm-pick-back');
+    if (back) {
+      back.onclick = function () {
+        _pendingSelection = null;
+        el.style.display = 'none';
+        var sub = document.getElementById('sub-screen');
+        if (sub) sub.style.display = '';
+      };
+    }
+    return el;
+  }
+
+  function showFirmPicker(data) {
+    var el = ensureFirmPickScreen();
+    _pendingSelection = {
+      token: data.selection_token || '',
+      email: data.owner_email || '',
+      firms: data.firms || []
+    };
+    var emailEl = document.getElementById('cafh-firm-pick-email');
+    if (emailEl) {
+      emailEl.textContent =
+        (data.owner_email || '') +
+        ' is linked to ' +
+        _pendingSelection.firms.length +
+        ' firm(s). Choose the firm you work with — data stays separate.';
+    }
+    var list = document.getElementById('cafh-firm-pick-list');
+    var errEl = document.getElementById('cafh-firm-pick-err');
+    if (errEl) {
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+    }
+    if (list) {
+      list.innerHTML = '';
+      (_pendingSelection.firms || []).forEach(function (f) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText =
+          'text-align:left;padding:14px 16px;border-radius:12px;border:1.5px solid #e2e8f0;' +
+          'background:#f8fafc;cursor:pointer;font:inherit;width:100%';
+        btn.innerHTML =
+          '<div style="font-weight:600;color:#0B1F3A">' +
+          esc(f.name || 'Firm #' + f.id) +
+          '</div>' +
+          '<div style="font-size:12px;color:#64748b;margin-top:4px">' +
+          (f.reg_no ? esc(f.reg_no) + ' · ' : '') +
+          (f.expires_at ? 'Expires ' + esc(f.expires_at) : 'Active') +
+          '</div>';
+        btn.onmouseenter = function () {
+          btn.style.borderColor = '#2563eb';
+          btn.style.background = '#eff6ff';
+        };
+        btn.onmouseleave = function () {
+          btn.style.borderColor = '#e2e8f0';
+          btn.style.background = '#f8fafc';
+        };
+        btn.onclick = function () {
+          selectFirm(f.id, btn);
+        };
+        list.appendChild(btn);
+      });
+    }
+    var sub = document.getElementById('sub-screen');
+    if (sub) sub.style.display = 'none';
+    el.style.display = 'flex';
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function selectFirm(firmId, btn) {
+    var errEl = document.getElementById('cafh-firm-pick-err');
+    if (!_pendingSelection) return;
+    if (btn) {
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+    }
+    try {
+      var r = await fetch('/api/subscription/select-firm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firm_id: firmId,
+          selection_token: _pendingSelection.token,
+          email: _pendingSelection.email
+        })
+      });
+      var d = await r.json().catch(function () {
+        return {};
+      });
+      if (!r.ok) throw new Error(d.detail || 'Could not select firm');
+      finishVerify(d);
+      var pick = document.getElementById('cafh-firm-pick-screen');
+      if (pick) pick.style.display = 'none';
+      _pendingSelection = null;
+    } catch (e) {
+      if (errEl) {
+        errEl.textContent = e.message || 'Selection failed';
+        errEl.style.display = 'block';
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    }
+  }
+
+  function finishVerify(d) {
+    var tok = d.subscription_token;
+    if (!tok) throw new Error('No token returned');
+    try {
+      localStorage.setItem('sub_tk', tok);
+      localStorage.setItem('cafirmhub_sub_token', tok);
+    } catch (e) {}
+    if (typeof showLoginScreen === 'function') showLoginScreen();
+    else {
+      var sub = document.getElementById('sub-screen');
+      var login = document.getElementById('login-screen');
+      if (sub) sub.style.display = 'none';
+      if (login) login.style.display = 'flex';
+    }
+    var fb = document.getElementById('login-firm-badge');
+    if (fb && d.firm_name) {
+      fb.style.display = 'block';
+      fb.textContent = d.firm_name + (d.owner_email ? ' · ' + d.owner_email : '');
+    }
+  }
+
   window.doSubscriptionVerify = async function () {
     var input = document.getElementById('sub-id');
-    var errEl = document.getElementById('sub-err') || document.querySelector('#sub-screen .login-err, #sub-err');
+    var errEl =
+      document.getElementById('sub-err') ||
+      document.querySelector('#sub-screen .login-err, #sub-err');
     var btn = document.getElementById('sub-btn');
-    var raw = (input && input.value || '').trim();
-    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    var raw = ((input && input.value) || '').trim();
+    if (errEl) {
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+    }
     if (!raw) {
       if (errEl) {
         errEl.textContent = 'Please enter your subscription email (or Subscription ID).';
@@ -42,7 +203,10 @@
       }
       return;
     }
-    if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Verifying…';
+    }
     var body = {};
     if (raw.indexOf('@') >= 0) body.email = raw.toLowerCase();
     else body.subscription_id = raw;
@@ -52,44 +216,38 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      var d = await r.json().catch(function () { return {}; });
+      var d = await r.json().catch(function () {
+        return {};
+      });
       if (!r.ok) throw new Error(d.detail || 'Verification failed');
-      var tok = d.subscription_token;
-      if (!tok) throw new Error('No token returned');
-      try {
-        localStorage.setItem('sub_tk', tok);
-        localStorage.setItem('cafirmhub_sub_token', tok);
-      } catch (e) {}
-      if (typeof showLoginScreen === 'function') showLoginScreen();
-      else {
-        var sub = document.getElementById('sub-screen');
-        var login = document.getElementById('login-screen');
-        if (sub) sub.style.display = 'none';
-        if (login) login.style.display = 'flex';
+      if (d.multiple && d.firms && d.firms.length > 1) {
+        showFirmPicker(d);
+        return;
       }
-      var fb = document.getElementById('login-firm-badge');
-      if (fb && d.firm_name) {
-        fb.style.display = 'block';
-        fb.textContent = d.firm_name + (d.owner_email ? ' · ' + d.owner_email : '');
-      }
+      finishVerify(d);
     } catch (e) {
       if (errEl) {
         errEl.textContent = e.message || 'Verification failed';
         errEl.style.display = 'block';
       }
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Continue →'; }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Continue →';
+      }
     }
   };
 
-  // Inject subscription_token into login request WITHOUT replacing doLogin.
-  // Original doLogin assigns page-scoped `let T`/`let U` — window.T does not work.
   var _fetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     try {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       init = init || {};
-      if (url.indexOf('/api/auth/login') !== -1 && init.method && String(init.method).toUpperCase() === 'POST') {
+      if (
+        url.indexOf('/api/auth/login') !== -1 &&
+        init.method &&
+        String(init.method).toUpperCase() === 'POST'
+      ) {
         var body = init.body;
         if (typeof body === 'string') {
           try {
@@ -97,7 +255,10 @@
             if (!j.subscription_token) {
               var tok = '';
               try {
-                tok = localStorage.getItem('sub_tk') || localStorage.getItem('cafirmhub_sub_token') || '';
+                tok =
+                  localStorage.getItem('sub_tk') ||
+                  localStorage.getItem('cafirmhub_sub_token') ||
+                  '';
               } catch (e) {}
               if (tok) {
                 j.subscription_token = tok;
@@ -107,8 +268,11 @@
           } catch (e) {}
         }
       }
-      if ((url === '/api/superadmin/firms' || /\/api\/superadmin\/firms\/\d+$/.test(url)) &&
-          init.method && /POST|PUT/i.test(String(init.method))) {
+      if (
+        (url === '/api/superadmin/firms' || /\/api\/superadmin\/firms\/\d+$/.test(url)) &&
+        init.method &&
+        /POST|PUT/i.test(String(init.method))
+      ) {
         var body2 = init.body;
         if (typeof body2 === 'string') {
           try {
@@ -135,7 +299,10 @@
     fg.innerHTML =
       '<label>Subscription email *</label>' +
       '<input type="email" id="firm-owner-email" placeholder="admin@yourfirm.com" style="width:100%">' +
-      '<p style="font-size:11px;color:#718096;margin-top:4px">Users enter this email on the subscription gate. Must be unique across firms.</p>';
+      '<p style="font-size:11px;color:#718096;margin-top:4px">' +
+      'Users enter this email on the gate. Same email may be used on more than one firm; ' +
+      'at login they will choose which firm, then use that firm’s user ID and password. ' +
+      'Firm data stays fully separate.</p>';
     body.appendChild(fg);
   }
 
