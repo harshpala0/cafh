@@ -39,3 +39,11 @@ try:
     print("[CA FirmHub] MRL company/LLP routes registered")
 except Exception as _mrl_err:
     print("[CA FirmHub] MRL company/LLP routes:", _mrl_err)
+
+
+# --- Day / Night theme (module-wide) ---
+try:
+    from theme_enhance import register_theme_enhance
+    register_theme_enhance(app)
+except Exception as _theme_err:
+    print("[CA FirmHub] Theme enhance:", _theme_err)
