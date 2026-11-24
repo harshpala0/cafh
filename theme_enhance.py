@@ -20,17 +20,26 @@ _INJECT_BODY = """
 """
 
 
+def _inject(html: str) -> str:
+    """Inject only at the real document head/body ends — never inside JS template strings."""
+    if not html:
+        return html
+    # First </head> in the first 80KB is the real document head
+    if 'id="cfh-theme-css"' not in html:
+        idx = html.find('</head>')
+        if 0 <= idx < 80000:
+            html = html[:idx] + _INJECT_HEAD + html[idx:]
+    # Final </body> must sit near the true end of the file
+    last_body = html.rfind('</body>')
+    if last_body >= max(0, len(html) - 800):
+        near = html[max(0, last_body - 300):last_body]
+        if '/static/theme.js' not in near:
+            html = html[:last_body] + _INJECT_BODY + html[last_body:]
+    return html
+
+
 def register_theme_enhance(app, helpers=None):
     """Wrap the root HTML response to inject day/night theme assets."""
-
-    def _inject(html: str) -> str:
-        if not html:
-            return html
-        if 'cfh-theme-css' not in html and '</head>' in html:
-            html = html.replace('</head>', _INJECT_HEAD + '</head>', 1)
-        if '/static/theme.js' not in html and '</body>' in html:
-            html = html.replace('</body>', _INJECT_BODY + '</body>', 1)
-        return html
 
     endpoint = None
     for r in app.url_map.iter_rules():
