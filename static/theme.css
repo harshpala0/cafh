@@ -1,0 +1,55 @@
+/* CA FirmHub Day/Night — Designed & Built by Harsh Pala */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --icai-navy:    #5B9BD5;
+  --icai-navy-d:  #0a1628;
+  --icai-navy-m:  #2E6BA6;
+  --icai-navy-l:  #4A90C8;
+  --icai-gold:    #E0B84A;
+  --icai-gold-l:  #F0D078;
+  --icai-gold-xl: #3d3420;
+  --icai-saffron: #FFB366;
+  --bg:       #0B1220;
+  --bg2:      #111A2B;
+  --surface:  #152033;
+  --surface2: #1A2740;
+  --border:   #2A3A55;
+  --border-l: #243247;
+  --text:     #E8EEF5;
+  --text2:    #A8B8CC;
+  --text3:    #7A8BA3;
+  --ok:       #3DCF7A; --ok-bg:#143D28; --ok-bd:#2A6B48;
+  --warn:     #F0A060; --warn-bg:#3D2A18; --warn-bd:#8B5A30;
+  --err:      #F07070; --err-bg:#3D1A1A; --err-bd:#8B3A3A;
+  --info:     #6BA8E8; --info-bg:#152A40; --info-bd:#2A5080;
+  --purple:   #A78BFA; --purple-bg:#2A2040;
+  --sh: 0 1px 4px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.25);
+  --sh-md: 0 4px 16px rgba(0,0,0,.45),0 1px 4px rgba(0,0,0,.3);
+  --sh-lg: 0 8px 32px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
+}
+html[data-theme="dark"] #sub-screen,
+html[data-theme="dark"] #login-screen {
+  background: linear-gradient(145deg,#060d18 0%,#0B1220 50%,#111A2B 100%) !important;
+}
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: var(--border);
+}
+html[data-theme="dark"] table th {
+  background: var(--surface2);
+  color: var(--text2);
+}
+#cfh-theme-btn, .cfh-theme-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  background: var(--surface2); border: 1px solid var(--border-l);
+  border-radius: 50%; cursor: pointer; color: var(--icai-navy);
+  flex-shrink: 0;
+}
+#cfh-theme-btn:hover, .cfh-theme-btn:hover {
+  border-color: var(--icai-navy-l); background: var(--surface);
+}
+#cfh-theme-btn svg, .cfh-theme-btn svg { width: 16px; height: 16px; }
